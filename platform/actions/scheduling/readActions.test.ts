@@ -415,6 +415,59 @@ describe('scheduling.check_availability', () => {
     ]);
   });
 
+  it.each([false, true])('copies blockedUntil across the UTC date boundary (taken: %s)', async (taken) => {
+    const data = shopData({
+      scheduling_business_hours: [{ day_of_week: 2, open_time: '16:00:00', close_time: '20:00:00' }],
+    });
+    const env = setup(data);
+    const context = { tenantTimezone: 'America/Los_Angeles' };
+    data.scheduling_appointment_types[0].buffer_minutes = 15;
+    const aligned = await run('scheduling.check_availability', {
+      serviceIds: ['cut', 'beard'], staffId: 'marco', date: '2026-10-20', startTime: '16:30', limit: 1,
+    }, env, context);
+    const firstSlot = (aligned.result as { data: { slots: { start: string; blockedUntil: string }[] } }).data.slots[0];
+    expect(firstSlot.blockedUntil).toBe('2026-10-21T00:30:00.000Z');
+    data.bookings.push({ provider_id: 'marco', start_time: new Date(firstSlot.start), blocked_until: new Date(firstSlot.blockedUntil), status: 'confirmed', hold_expires_at: null });
+    if (taken) data.bookings.push({ provider_id: 'marco', start_time: new Date(firstSlot.blockedUntil), blocked_until: new Date('2026-10-21T01:00:00Z'), status: 'confirmed', hold_expires_at: null });
+    for (const date of [undefined, '2026-10-20']) {
+      const second = await run('scheduling.check_availability', {
+        serviceIds: ['cut'], staffId: 'marco', startTime: firstSlot.blockedUntil, date,
+      }, env, context);
+      expect(second.result.ok).toBe(true);
+      expect((second.result as { data: { slots: { start: string }[] } }).data.slots.map((s) => s.start)).toEqual(taken ? [
+        '2026-10-21T01:00:00.000Z', '2026-10-21T01:15:00.000Z', '2026-10-21T01:30:00.000Z',
+      ] : [
+        firstSlot.blockedUntil, '2026-10-21T00:45:00.000Z', '2026-10-21T01:00:00.000Z',
+      ]);
+    }
+    const offset = await run('scheduling.check_availability', {
+      serviceIds: ['cut'], staffId: 'marco', startTime: '2026-10-20T17:30:00-07:00',
+    }, env, context);
+    expect(offset.result.ok).toBe(true);
+    expect((offset.result as { data: { slots: { start: string }[] } }).data.slots[0].start).toBe(taken ? '2026-10-21T01:00:00.000Z' : firstSlot.blockedUntil);
+  });
+
+  it('rejects a timestamp whose shop-local date differs from date', async () => {
+    const { result, query } = await run('scheduling.check_availability', {
+      serviceIds: ['cut'], date: '2026-10-21', startTime: '2026-10-21T00:30:00Z',
+    }, setup(), { tenantTimezone: 'America/Los_Angeles' });
+    expect(errorOf(result)).toMatchObject({ code: 'VALIDATION_FAILED', field: 'startTime', callerSafeMessage: 'That time falls on a different date at the shop. Please check the date and time.' });
+    expect(dataQueries(query)).toEqual([]);
+  });
+
+  it.each(['garbage', '2026-10-20T17:30:00', '2026-02-30T17:30:00Z', '2026-10-20T24:00:00Z', '2026-10-20T17:30:00+25:00'])('rejects invalid startTime %s safely', async (startTime) => {
+    const { result, query } = await run('scheduling.check_availability', { serviceIds: ['cut'], startTime });
+    expect(errorOf(result)).toMatchObject({ code: 'VALIDATION_FAILED', field: 'startTime', callerSafeMessage: expect.any(String) });
+    expect(dataQueries(query)).toEqual([]);
+  });
+
+  it('rejects a timestamp with a window', async () => {
+    const { result } = await run('scheduling.check_availability', {
+      serviceIds: ['cut'], startTime: '2026-10-21T00:30:00Z', window: { from: '2026-10-20', to: '2026-10-21' },
+    });
+    expect(errorOf(result)).toMatchObject({ code: 'VALIDATION_FAILED', field: 'startTime' });
+  });
+
   it('accepts a 14-day window', async () => {
     const { result } = await run('scheduling.check_availability', { serviceIds: ['cut'], window: { from: '2026-10-20', to: '2026-11-02' }, limit: 1 });
     expect(result.ok).toBe(true);

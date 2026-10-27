@@ -24,6 +24,28 @@ function ctx(now = '2026-10-20T14:00:00-04:00'): ToolCallContext {
 }
 
 describe('FakeToolProvider', () => {
+  it('uses copied timestamps and their shop-local date for availability', async () => {
+    const state = buildShopFixture('barbershop-basic');
+    const tools = new FakeToolProvider(state, ['scheduling']);
+    const context = { ...ctx(), tenantTimezone: 'America/Los_Angeles' };
+    state.slots = [
+      { start: '2026-10-21T01:00:00.000Z', end: '2026-10-21T01:30:00.000Z', staffId: 'marco' },
+      { start: '2026-10-21T00:30:00.000Z', end: '2026-10-21T01:00:00.000Z', staffId: 'marco' },
+      { start: '2026-10-20T23:00:00.000Z', end: '2026-10-20T23:30:00.000Z', staffId: 'marco' },
+    ];
+    const query = { serviceIds: ['mens-cut'], staffId: 'marco', startTime: '2026-10-21T00:30:00.000Z' };
+    const result = await tools.invoke('scheduling.check_availability', query, context);
+    expect(result.ok && (result.data as { slots: { start: string }[] }).slots.map((s) => s.start)).toEqual([
+      '2026-10-21T00:30:00.000Z', '2026-10-21T01:00:00.000Z',
+    ]);
+    expect(await tools.invoke('scheduling.check_availability', { ...query, startTime: '17:30', date: '2026-10-20' }, context)).toEqual(result);
+    for (const input of [{ ...query, date: '2026-10-21' }, { ...query, startTime: 'garbage' }]) {
+      expect(await tools.invoke('scheduling.check_availability', input, context)).toMatchObject({
+        ok: false, error: { code: 'VALIDATION_FAILED', field: 'startTime', callerSafeMessage: expect.any(String) },
+      });
+    }
+  });
+
   it('holds then confirms exactly one booking at 15:30 with Marco', async () => {
     resetFakeTokens();
     const state = buildFixture('barbershop-marco');
