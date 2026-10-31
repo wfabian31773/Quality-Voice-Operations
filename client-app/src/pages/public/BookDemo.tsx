@@ -1,10 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, CheckCircle2, Clock, Users, Shield, ArrowRight, Loader2 } from 'lucide-react';
 import SEO from '../../components/SEO';
 import { trackPageView, trackCTAClick, trackConversionEvent, captureUtmOnLoad } from '../../lib/analytics';
 import { CTA } from '../../lib/analyticsCtas';
 import { CONVERSION_STAGE } from '../../lib/analyticsLabels';
+import {
+  BUILD_TIME_TURNSTILE_SITE_KEY,
+  parseSignupCaptchaConfig,
+  resolveCaptchaConfigAfterFetchFailure,
+} from '../../lib/signupCaptcha';
+
+type TurnstileApi = {
+  render: (el: HTMLElement, opts: Record<string, unknown>) => string | undefined;
+  reset?: (widgetId: string) => void;
+  remove?: (widgetId: string) => void;
+};
 
 const benefits = [
   { icon: Clock, title: '30-minute walkthrough', desc: 'Live tour of the platform tailored to your industry and call volume.' },
@@ -92,6 +103,14 @@ export default function BookDemo() {
     useCase: '',
     preferredTime: timeWindows[0],
   });
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaLoaded, setCaptchaLoaded] = useState(false);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [siteKey, setSiteKey] = useState(BUILD_TIME_TURNSTILE_SITE_KEY);
+  const captchaRef = useRef<HTMLDivElement>(null);
+  const captchaWidgetId = useRef<string | null>(null);
+  const captchaUnavailable = captchaLoaded && captchaRequired && !siteKey;
+  const activeSiteKey = captchaLoaded && captchaRequired ? siteKey : '';
 
   useEffect(() => {
     trackPageView('/book-demo');
@@ -121,15 +140,106 @@ export default function BookDemo() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/signup-config')
+      .then(async (res) => {
+        const raw = await res.json().catch(() => null);
+        if (cancelled) return;
+        const parsed = parseSignupCaptchaConfig(raw, BUILD_TIME_TURNSTILE_SITE_KEY);
+        setCaptchaRequired(parsed.captchaRequired);
+        setSiteKey(parsed.siteKey);
+        setCaptchaLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const parsed = resolveCaptchaConfigAfterFetchFailure(BUILD_TIME_TURNSTILE_SITE_KEY);
+        setCaptchaRequired(parsed.captchaRequired);
+        setSiteKey(parsed.siteKey);
+        setCaptchaLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeSiteKey || !captchaRef.current) return;
+
+    const win = window as unknown as { turnstile?: TurnstileApi; onTurnstileLoad?: () => void };
+    const themeAttr = document.documentElement.getAttribute('data-theme');
+    const turnstileTheme = themeAttr === 'dark' ? 'dark' : 'light';
+    const renderOpts = {
+      sitekey: activeSiteKey,
+      theme: turnstileTheme,
+      action: 'book-demo',
+      callback: (token: string) => setCaptchaToken(token),
+      'expired-callback': () => setCaptchaToken(''),
+      'error-callback': () => setCaptchaToken(''),
+    };
+
+    const renderWidget = () => {
+      if (captchaRef.current && win.turnstile && captchaWidgetId.current === null) {
+        captchaWidgetId.current = win.turnstile.render(captchaRef.current, renderOpts) ?? null;
+      }
+    };
+    const removeWidget = () => {
+      if (captchaWidgetId.current !== null) {
+        win.turnstile?.remove?.(captchaWidgetId.current);
+        captchaWidgetId.current = null;
+      }
+      setCaptchaToken('');
+    };
+
+    if (win.turnstile) {
+      renderWidget();
+      return removeWidget;
+    }
+
+    const viteMode = (import.meta as unknown as { env?: { MODE?: string } }).env?.MODE;
+    if (viteMode === 'test') return;
+
+    const script = document.createElement('script');
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad';
+    script.async = true;
+    win.onTurnstileLoad = renderWidget;
+    document.head.appendChild(script);
+    return () => {
+      script.remove();
+      delete win.onTurnstileLoad;
+      removeWidget();
+    };
+  }, [activeSiteKey]);
+
+  const resetCaptcha = () => {
+    setCaptchaToken('');
+    const win = window as unknown as { turnstile?: TurnstileApi };
+    if (captchaWidgetId.current !== null) {
+      win.turnstile?.reset?.(captchaWidgetId.current);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
     setError(null);
+    if (!captchaLoaded) return;
+    if (captchaUnavailable) {
+      setError('Demo requests are temporarily unavailable because CAPTCHA is not configured.');
+      return;
+    }
+    if (activeSiteKey && !captchaToken) {
+      setError('Please complete the CAPTCHA verification.');
+      return;
+    }
+    setSubmitting(true);
     try {
       const res = await fetch('/api/book-demo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          captchaToken: captchaToken || undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -142,6 +252,7 @@ export default function BookDemo() {
       trackConversionEvent(CONVERSION_STAGE.DEMO_REQUESTED, '/book-demo', { teamSize: form.teamSize });
       setSubmitted(true);
     } catch (err) {
+      resetCaptcha();
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
       setSubmitting(false);
@@ -360,9 +471,28 @@ export default function BookDemo() {
                   </div>
                 )}
 
+                {captchaUnavailable && (
+                  <div
+                    className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2"
+                    data-testid="book-demo-captcha-unavailable"
+                  >
+                    Demo requests are temporarily unavailable because CAPTCHA is not configured.
+                  </div>
+                )}
+
+                {activeSiteKey && (
+                  <div className="flex justify-center">
+                    <div
+                      ref={captchaRef}
+                      className="min-h-[70px] rounded-md"
+                      data-testid="book-demo-captcha-slot"
+                    />
+                  </div>
+                )}
+
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || !captchaLoaded || captchaUnavailable}
                   className="w-full inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover disabled:bg-primary/60 text-white font-semibold px-6 py-3 rounded-xl text-sm transition-colors"
                 >
                   {submitting ? (

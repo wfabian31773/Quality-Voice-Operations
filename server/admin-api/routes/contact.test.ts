@@ -120,6 +120,17 @@ describe('POST /contact', () => {
 });
 
 describe('POST /book-demo', () => {
+  const originalSecret = process.env.TURNSTILE_SECRET_KEY;
+
+  beforeEach(() => {
+    delete process.env.TURNSTILE_SECRET_KEY;
+  });
+
+  afterEach(() => {
+    if (originalSecret === undefined) delete process.env.TURNSTILE_SECRET_KEY;
+    else process.env.TURNSTILE_SECRET_KEY = originalSecret;
+  });
+
   it('requires name/email/company', async () => {
     expect((await request(app()).post('/book-demo').send({ name: 'A', email: 'a@b.com' })).status).toBe(400);
   });
@@ -127,6 +138,13 @@ describe('POST /book-demo', () => {
     a.recordLeadMock.mockResolvedValue({ id: 99 });
     const res = await request(app()).post('/book-demo').send({ name: 'A', email: 'a@b.com', company: 'Acme' });
     expect(res.body).toMatchObject({ success: true, leadId: 99 });
+  });
+  it('rejects a missing Turnstile token when the secret is configured', async () => {
+    process.env.TURNSTILE_SECRET_KEY = 'test-turnstile-secret';
+    const res = await request(app()).post('/book-demo').send({ name: 'A', email: 'a@b.com', company: 'Acme' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/CAPTCHA verification is required/i);
+    expect(a.recordLeadMock).not.toHaveBeenCalled();
   });
 });
 

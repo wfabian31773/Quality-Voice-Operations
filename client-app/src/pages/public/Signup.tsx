@@ -143,6 +143,7 @@ export default function Signup() {
     const renderOpts = {
       sitekey: activeSiteKey,
       theme: turnstileTheme,
+      action: 'signup',
       callback: (token: string) => setCaptchaToken(token),
       'expired-callback': () => setCaptchaToken(''),
       'error-callback': () => setCaptchaToken(''),
