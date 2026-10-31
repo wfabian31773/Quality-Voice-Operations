@@ -124,15 +124,30 @@ describe('object storage guard (PR-00: no Replit sidecar without PRIVATE_OBJECT_
     ['get', '/dispatch/route-exports/exp-1/file'],
     ['get', '/dispatch/completion-photos/att-1'],
   ] as const)('%s %s → 503 storage not configured', async (method, path) => {
-    const saved = process.env.PRIVATE_OBJECT_DIR;
+    const saved = {
+      PRIVATE_OBJECT_DIR: process.env.PRIVATE_OBJECT_DIR,
+      OBJECT_STORAGE_PROVIDER: process.env.OBJECT_STORAGE_PROVIDER,
+      OBJECT_STORAGE_LOCAL_DIR: process.env.OBJECT_STORAGE_LOCAL_DIR,
+      S3_BUCKET: process.env.S3_BUCKET,
+      S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
+      S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
+    };
     delete process.env.PRIVATE_OBJECT_DIR;
+    delete process.env.OBJECT_STORAGE_PROVIDER;
+    delete process.env.OBJECT_STORAGE_LOCAL_DIR;
+    delete process.env.S3_BUCKET;
+    delete process.env.S3_ACCESS_KEY_ID;
+    delete process.env.S3_SECRET_ACCESS_KEY;
     try {
       const res = await request(app())[method](path).send({});
       expect(res.status).toBe(503);
       expect(res.body).toEqual({ error: 'storage not configured', code: 'STORAGE_NOT_CONFIGURED' });
       expect(a.poolQueryMock).not.toHaveBeenCalled();
     } finally {
-      if (saved !== undefined) process.env.PRIVATE_OBJECT_DIR = saved;
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
     }
   });
 });

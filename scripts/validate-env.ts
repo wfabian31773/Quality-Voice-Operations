@@ -125,6 +125,20 @@ const OPTIONAL_VARS: EnvVar[] = [
   { name: 'CALENDLY_WEBHOOK_ALLOW_UNSIGNED', required: 'development', purpose: 'Dev/staging only. Set to "1" to accept unsigned Calendly webhook requests when CALENDLY_WEBHOOK_SECRET is not configured. Production always fails closed' },
   { name: 'QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY', required: 'development', purpose: 'Previous caller-lookup HMAC key retained only during a bounded rotation/backfill window' },
   { name: 'QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION', required: 'development', purpose: 'Version paired with QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY during rotation' },
+  // PR-00b: object storage adapter. Optional — unset keeps today's 503
+  // "storage not configured" behaviour. Do not add these to render.yaml
+  // from this PR; operators set them when the bucket is provisioned.
+  { name: 'OBJECT_STORAGE_PROVIDER', required: 'development', purpose: 'Object storage backend: s3 | local | replit. Auto-selects S3 when S3_BUCKET+keys are set, else Replit when PRIVATE_OBJECT_DIR is set, else local when OBJECT_STORAGE_LOCAL_DIR is set' },
+  { name: 'S3_ENDPOINT', required: 'development', purpose: 'S3-compatible endpoint (Supabase Storage: https://<ref>.supabase.co/storage/v1/s3). Omit for AWS S3' },
+  { name: 'S3_REGION', required: 'development', purpose: 'S3 region (default us-east-1)' },
+  { name: 'S3_BUCKET', required: 'development', purpose: 'S3 bucket name for private objects (recordings, exports, uploads)' },
+  { name: 'S3_ACCESS_KEY_ID', required: 'development', purpose: 'S3 access key id (never logged)' },
+  { name: 'S3_SECRET_ACCESS_KEY', required: 'development', purpose: 'S3 secret access key (never logged)' },
+  { name: 'S3_FORCE_PATH_STYLE', required: 'development', purpose: 'Set to "false" to use virtual-hosted-style URLs. Default true (required for Supabase/MinIO)' },
+  { name: 'S3_PREFIX', required: 'development', purpose: 'Optional key prefix inside the bucket' },
+  { name: 'OBJECT_STORAGE_LOCAL_DIR', required: 'development', purpose: 'Local-disk root for OBJECT_STORAGE_PROVIDER=local (tests / offline dev). Default: os.tmpdir()/qvo-object-storage' },
+  { name: 'PRIVATE_OBJECT_DIR', required: 'development', purpose: 'Replit sidecar private object directory (legacy). Still accepted when OBJECT_STORAGE_PROVIDER is unset or replit' },
+  { name: 'PUBLIC_OBJECT_SEARCH_PATHS', required: 'development', purpose: 'Replit sidecar public object search paths (comma-separated)' },
 ];
 
 /**
@@ -416,6 +430,18 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean; role?: 
     for (const name of AZUL_ONLY_ENV_NAMES) {
       if (process.env[name]?.trim()) {
         warnings.push(`${name} is set but is an Azul-owned name; QVO must not depend on it (see docs/deploy/render.md)`);
+      }
+    }
+  }
+
+  // PR-00b: warn (never fail) when the operator asked for S3 but left
+  // credentials unset. Routes stay on 503 until the vars are filled in;
+  // we do not fail boot so this PR can ship without changing Render env.
+  const storageProvider = process.env.OBJECT_STORAGE_PROVIDER?.trim().toLowerCase();
+  if (storageProvider === 's3') {
+    for (const name of ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const) {
+      if (!process.env[name]?.trim()) {
+        warnings.push(`${name} is required when OBJECT_STORAGE_PROVIDER=s3 (see docs/ops/object-storage.md)`);
       }
     }
   }

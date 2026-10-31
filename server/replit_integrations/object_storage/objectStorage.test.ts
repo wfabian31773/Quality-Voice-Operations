@@ -20,16 +20,21 @@ vi.mock('@google-cloud/storage', () => {
   return { Storage, File };
 });
 
+import { resetStorageAdapterForTests } from '../../../platform/storage';
 import { ObjectStorageService } from './objectStorage';
 
 describe('ObjectStorageService.deletePrivateObject', () => {
   beforeEach(() => {
+    process.env.PRIVATE_OBJECT_DIR = '/bucket/private';
+    resetStorageAdapterForTests();
     fileMock.mockReset();
     deleteMock.mockReset();
     fileMock.mockReturnValue({ delete: deleteMock });
   });
 
   afterEach(() => {
+    delete process.env.PRIVATE_OBJECT_DIR;
+    resetStorageAdapterForTests();
     vi.clearAllMocks();
   });
 

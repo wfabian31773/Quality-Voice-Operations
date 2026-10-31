@@ -71,6 +71,17 @@ function resetEnv(): void {
   delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
   delete process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY;
   delete process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION;
+  delete process.env.OBJECT_STORAGE_PROVIDER;
+  delete process.env.S3_BUCKET;
+  delete process.env.S3_ACCESS_KEY_ID;
+  delete process.env.S3_SECRET_ACCESS_KEY;
+  delete process.env.S3_ENDPOINT;
+  delete process.env.OBJECT_STORAGE_LOCAL_DIR;
+  delete process.env.PRIVATE_OBJECT_DIR;
+  delete process.env.SUPABASE_DATABASE_URL;
+  delete process.env.TICKETING_SYSTEM_URL;
+  delete process.env.TICKETING_API_KEY;
+  delete process.env.AZUL_VISION_ONCALL_NUMBER;
 }
 
 function applyAllProductionVars(): void {
@@ -443,6 +454,22 @@ describe('validateEnvironment() — warnings', () => {
     const result = validateEnvironment();
 
     expect(result.warnings.some(w => w.includes('PLATFORM_DB_POOL_URL'))).toBe(true);
+  });
+
+  it('warns when OBJECT_STORAGE_PROVIDER=s3 but S3 credentials are missing (does not fail boot)', async () => {
+    applyAllProductionVars();
+    process.env.OBJECT_STORAGE_PROVIDER = 's3';
+    delete process.env.S3_BUCKET;
+    delete process.env.S3_ACCESS_KEY_ID;
+    delete process.env.S3_SECRET_ACCESS_KEY;
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.passed).toBe(true);
+    expect(result.warnings.some(w => w.includes('S3_BUCKET') && w.includes('OBJECT_STORAGE_PROVIDER=s3'))).toBe(true);
+    expect(result.warnings.some(w => w.includes('S3_ACCESS_KEY_ID'))).toBe(true);
+    expect(result.warnings.some(w => w.includes('S3_SECRET_ACCESS_KEY'))).toBe(true);
+    expect(result.warnings.join('\n')).not.toMatch(/sk_live|AKIA/);
   });
 
   it('warns when CONNECTOR_ENCRYPTION_KEY is shorter than 64 hex chars', async () => {

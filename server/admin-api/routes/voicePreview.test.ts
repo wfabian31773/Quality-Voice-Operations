@@ -5,8 +5,8 @@ import request from 'supertest';
 const a = vi.hoisted(() => ({
   user: { userId: 'u1', tenantId: 't1', email: 'e@x.com', role: 'operations_manager', isPlatformAdmin: false },
   existsMock: vi.fn(),
-  downloadMock: vi.fn(),
-  saveMock: vi.fn(),
+  getMock: vi.fn(),
+  putMock: vi.fn(),
 }));
 
 vi.mock('../middleware/auth', () => ({
@@ -15,11 +15,25 @@ vi.mock('../middleware/auth', () => ({
     next();
   },
 }));
-vi.mock('../../replit_integrations/object_storage', () => ({
-  objectStorageClient: {
-    bucket: () => ({ file: () => ({ exists: a.existsMock, download: a.downloadMock, save: a.saveMock }) }),
-  },
-}));
+vi.mock('../../../platform/storage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../platform/storage')>();
+  return {
+    ...actual,
+    getStorageAdapter: () => ({
+      provider: 'local' as const,
+      exists: a.existsMock,
+      get: a.getMock,
+      put: a.putMock,
+      getMetadata: async () => ({ contentType: 'audio/mpeg', size: 5 }),
+      delete: async () => false,
+      createReadStream: async () => {
+        throw new Error('unused');
+      },
+      getSignedUploadUrl: async () => ({ url: 'local-storage://local/x', objectPath: '/objects/x' }),
+      normalizeObjectPath: (p: string) => p,
+    }),
+  };
+});
 
 import router, { SUPPORTED_VOICES } from './voicePreview';
 
@@ -41,13 +55,18 @@ const uniqueGreeting = () => `Hello there number ${n++}`;
 
 beforeEach(() => {
   a.user.userId = `u-${Math.random().toString(36).slice(2)}`; // unique rate-limit key per test
-  a.existsMock.mockReset().mockResolvedValue([false]);
-  a.downloadMock.mockReset();
-  a.saveMock.mockReset().mockResolvedValue(undefined);
+  a.existsMock.mockReset().mockResolvedValue(false);
+  a.getMock.mockReset();
+  a.putMock.mockReset().mockResolvedValue('/local/voice-previews/x.mp3');
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
   process.env.OPENAI_API_KEY = 'sk-test';
   delete process.env.PRIVATE_OBJECT_DIR;
+  delete process.env.OBJECT_STORAGE_PROVIDER;
+  delete process.env.OBJECT_STORAGE_LOCAL_DIR;
+  delete process.env.S3_BUCKET;
+  delete process.env.S3_ACCESS_KEY_ID;
+  delete process.env.S3_SECRET_ACCESS_KEY;
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -94,8 +113,8 @@ describe('POST /agents/voice-preview synthesis', () => {
 
   it('serves the warm tier from object storage when present', async () => {
     process.env.PRIVATE_OBJECT_DIR = '/bucket/private';
-    a.existsMock.mockResolvedValue([true]);
-    a.downloadMock.mockResolvedValue([Buffer.from('STORED')]);
+    a.existsMock.mockResolvedValue(true);
+    a.getMock.mockResolvedValue(Buffer.from('STORED'));
     const res = await request(app()).post('/agents/voice-preview').send({ voice: VOICE, language: 'en', greeting: uniqueGreeting() });
     expect(res.status).toBe(200);
     expect(res.headers['x-voice-preview-cache']).toBe('warm');

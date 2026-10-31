@@ -23,6 +23,7 @@ import {
   ObjectStorageService,
   ObjectNotFoundError,
 } from '../../replit_integrations/object_storage';
+import { storageKeys } from '../../../platform/storage';
 import {
   isObjectStorageConfigured,
   requireObjectStorage,
@@ -2207,8 +2208,9 @@ export const getAttachmentFileHandler: RequestHandler = async (req, res) => {
       return res.status(404).json({ error: 'Attachment file not found' });
     }
     const storage = new ObjectStorageService();
-    const file = await storage.getObjectEntityFile(rows[0].object_path as string);
-    await storage.downloadObject(file, res, 60);
+    await storage.streamStoredObject(rows[0].object_path as string, res, {
+      cacheTtlSec: 60,
+    });
     return;
   } catch (err) {
     if (err instanceof ObjectNotFoundError) {
@@ -3880,7 +3882,7 @@ export async function processRouteExportJob(exportJobId: string): Promise<void> 
     // bucket but never collide. The download endpoint maps a token →
     // this path, so the random id alone is enough; the tenant prefix
     // is just for human-readable triage of the bucket.
-    const objectKey = `dispatch-route-exports/${row.tenant_id}/${exportJobId}.zip`;
+    const objectKey = storageKeys.routeExport(row.tenant_id, exportJobId);
     const storage = new ObjectStorageService();
     const archiveObjectPath = await storage.uploadPrivateObject(
       objectKey,
@@ -4132,51 +4134,12 @@ export const getCompletionPhotoHandler: RequestHandler = async (req, res) => {
     }
 
     const storage = new ObjectStorageService();
-    // Translate the stored `/objects/<entityId>` path into the
-    // absolute `/<bucket>/<object>` form `streamPrivateObject`
-    // expects. The two formats are interchangeable here because
-    // `streamPrivateObject` resolves bucket + object from the path
-    // it's given; we delegate to `getObjectEntityFile` to handle the
-    // `/objects/...` form so the same handler works whether the
-    // attachment was saved by the mobile upload flow (object path) or
-    // by a legacy uploader (full bucket path).
-    const objectPath = String(row.object_path);
-    const file = objectPath.startsWith('/objects/')
-      ? await storage.getObjectEntityFile(objectPath)
-      : null;
-
-    if (file) {
-      // Mirror the cache-control + content-disposition behaviour of
-      // streamPrivateObject. We don't want browsers caching the
-      // photo across users, but a short same-session cache is fine
-      // and saves a re-fetch when the customer toggles back to the
-      // email tab.
-      const [metadata] = await file.getMetadata();
-      const filename = (row.title as string | null)?.trim() || `completion-photo-${attachmentId.slice(0, 8)}`;
-      const safeName = filename.replace(/"/g, '');
-      res.setHeader('Content-Type', metadata.contentType || (row.mime_type as string | null) || 'application/octet-stream');
-      if (metadata.size != null) {
-        res.setHeader('Content-Length', String(metadata.size));
-      }
-      res.setHeader('Cache-Control', 'private, max-age=300');
-      res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
-      await new Promise<void>((resolve, reject) => {
-        const stream = file.createReadStream();
-        stream.on('error', reject);
-        stream.on('end', resolve);
-        stream.on('close', resolve);
-        stream.pipe(res);
-      });
-      return;
-    }
-
-    // Legacy / non-`/objects/` path — treat the stored value as an
-    // absolute `/<bucket>/<object>` path the same way the route
-    // export download does.
-    await storage.streamPrivateObject(objectPath, res, {
+    const filename =
+      (row.title as string | null)?.trim() || `completion-photo-${attachmentId.slice(0, 8)}`;
+    await storage.streamStoredObject(String(row.object_path), res, {
       cacheTtlSec: 300,
-      downloadFilename:
-        (row.title as string | null)?.trim() || `completion-photo-${attachmentId.slice(0, 8)}`,
+      downloadFilename: filename,
+      contentDisposition: 'inline',
     });
   } catch (err) {
     if (err instanceof ObjectNotFoundError) {
