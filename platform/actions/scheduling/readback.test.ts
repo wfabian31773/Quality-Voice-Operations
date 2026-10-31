@@ -57,7 +57,7 @@ describe('readbacks', () => {
       'Gel manicure and Gel removal with Rosa, Thursday at 1 PM, for Mai, phone ending in 0199. The price is from $45 plus $10.',
     );
     expect(bookReadback({ ...facts, when: 'jueves, 1 p. m.' }, bookingPriceText(priced, 'es'), 'es')).toBe(
-      'Gel manicure y Gel removal con Rosa, jueves, 1 p. m., para Mai, teléfono que termina en 0199. El precio es desde $45 más $10.',
+      'Gel manicure y Gel removal con Rosa, jueves, 1 p. m., para Mai, teléfono que termina en 0199. El precio es desde 45 dólares más 10 dólares.',
     );
   });
 

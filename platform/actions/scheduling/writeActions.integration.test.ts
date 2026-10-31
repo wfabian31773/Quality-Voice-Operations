@@ -475,8 +475,8 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       const p = data<{ readback: string; priceText: string; confirmationToken: string }>(
         await act('scheduling.book.prepare', es, bookInput(shop, edt(20, '15:30'))),
       );
-      expect(p.readback).toMatch(/^Men's cut con Marco, mañana, 3:30 p\. ?m\., para Luis, teléfono que termina en 0142\. El precio es desde \$35\.$/);
-      expect(p.priceText).toBe('desde $35');
+      expect(p.readback).toMatch(/^Men's cut con Marco, mañana, 3:30 p\. ?m\., para Luis, teléfono que termina en 0142\. El precio es desde 35 dólares\.$/);
+      expect(p.priceText).toBe('desde 35 dólares');
       const c = data<{ readback: string }>(await act('scheduling.book.commit', es, { confirmationToken: p.confirmationToken }));
       expect(c.readback).toMatch(/^Confirmado: Men's cut con Marco, mañana, 3:30 p\. ?m\., para Luis\.$/);
       const unpriced = data<{ readback: string; priceText: string }>(
@@ -500,7 +500,7 @@ describe.skipIf(!dbReachable)('scheduling write actions on Postgres (PR-13)', ()
       const p = data<{ readback: string; confirmationToken: string }>(
         await act('scheduling.book.prepare', es, bookInput(shop, edt(20, '15:30'), { serviceIds: [haircut] })),
       );
-      expect(p.readback).toMatch(/^corte de pelo con Marco, mañana, 3:30 p\. ?m\., para Luis, teléfono que termina en 0142\. El precio es desde \$30\.$/);
+      expect(p.readback).toMatch(/^corte de pelo con Marco, mañana, 3:30 p\. ?m\., para Luis, teléfono que termina en 0142\. El precio es desde 30 dólares\.$/);
       const c = data<{ bookingId: string; readback: string }>(await act('scheduling.book.commit', es, { confirmationToken: p.confirmationToken }));
       expect(c.readback).toMatch(/^Confirmado: corte de pelo con Marco, mañana, 3:30 p\. ?m\., para Luis\.$/);
 

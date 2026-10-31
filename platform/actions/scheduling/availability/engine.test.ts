@@ -513,7 +513,7 @@ describe('computeAvailability: exact start (at) and nearest slots (near), used b
   it('offers exactly the requested start, with the engine-assigned staff member for any', () => {
     const r = computeAvailability(input({ date: '2026-10-20', at: TUE_1000, limit: 1 }));
     expect(r.slots).toEqual([
-      { start: '2026-10-20T14:00:00.000Z', end: '2026-10-20T14:30:00.000Z', blockedUntil: '2026-10-20T14:30:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 10 AM' },
+      { start: '2026-10-20T14:00:00.000Z', end: '2026-10-20T14:30:00.000Z', blockedUntil: '2026-10-20T14:30:00.000Z', staffId: 'marco', staffName: 'Marco', localTime: '2026-10-20T10:00:00-04:00', spoken: 'tomorrow at 10 AM' },
     ]);
     // Marco busier that day → Dana gets it.
     const busy = computeAvailability(input({

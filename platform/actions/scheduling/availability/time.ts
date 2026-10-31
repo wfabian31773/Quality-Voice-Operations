@@ -80,6 +80,15 @@ export function localMinuteOf(ms: number, timeZone: string): number {
   return p.hour * 60 + p.minute;
 }
 
+/** `ms` as an ISO timestamp with the offset `timeZone` has at that instant ('2026-11-05T14:30:00-05:00'). */
+export function localIsoOf(ms: number, timeZone: string): string {
+  const p = zonedParts(ms, timeZone);
+  const offset = offsetMinutes(ms, timeZone);
+  const abs = Math.abs(offset);
+  const zone = `${offset < 0 ? '-' : '+'}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+  return `${localDateOf(ms, timeZone)}T${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}${zone}`;
+}
+
 /** True for a real calendar date in 'YYYY-MM-DD' form (rejects 2026-02-30). */
 export function isRealIsoDate(value: string): boolean {
   const m = ISO_DATE.exec(value);

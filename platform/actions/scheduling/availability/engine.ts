@@ -5,6 +5,7 @@ import {
   dayOfWeek,
   DAY_MINUTES,
   localDateOf,
+  localIsoOf,
   localMinuteOf,
   MINUTE_MS,
   offsetMinutes,
@@ -426,6 +427,7 @@ export function computeAvailability(input: AvailabilityInput): AvailabilityResul
       blockedUntil: new Date(c.ms + durationMs + bufferMs).toISOString(),
       staffId: c.staff.id,
       staffName: c.staff.name,
+      localTime: localIsoOf(c.ms, tz),
       spoken: spokenSlot(c.ms, nowMs, tz, input.locale),
     }));
   }

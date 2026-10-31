@@ -115,6 +115,8 @@ export interface Slot {
   blockedUntil: string;
   staffId: string;
   staffName: string;
+  /** `start` with the shop's own offset at that instant, so nothing has to convert it. */
+  localTime: string;
   spoken: string;
 }
 
