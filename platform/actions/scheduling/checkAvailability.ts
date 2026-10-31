@@ -16,7 +16,7 @@ import {
 } from './availability';
 import { availabilityStartTime, resolveAvailabilityStart } from './availabilityStart';
 import { dateSlot, toTenantDate, writtenDate } from './dateSlot';
-import { readbackLang } from './readback';
+import { intlLocale, readbackLang } from './readback';
 import { resolveServiceRefs } from './serviceRefs';
 import { resolveStaffRef } from './staffRefs';
 
@@ -68,6 +68,7 @@ const output = z.object({
       blockedUntil: z.string(),
       staffId: z.string(),
       staffName: z.string(),
+      localTime: z.string(),
       spoken: z.string(),
     }),
   ),
@@ -88,7 +89,8 @@ export const checkAvailabilityAction = defineAction({
     + `staffId is a staff id from list_staff or 'any'; their exact name also works. Give date (${DATE_SLOT_FORMAT}) `
     + 'or window {from,to} in the same format; with neither it finds the first available day. '
     + 'Optional startTime checks that exact time: slots start there if it is open, else the next open times, earliest first. Use shop-local HH:MM with date, or copy a full ISO timestamp (with Z or an offset) directly from a slot start or blockedUntil without converting it. A timestamp supplies its own shop-local date; any provided date must match. startTime cannot be used with window. Optional partOfDay '
-    + '(morning, afternoon, evening) and limit (max 5). Offer at most 3 slots using their spoken text. '
+    + '(morning, afternoon, evening) and limit (max 5). Offer at most 3 slots, saying each slot\'s spoken text word for word. '
+    + 'spoken is already in shop-local time: never work out a time to say from a timestamp, and never convert one (start, end and blockedUntil are UTC; localTime is start with the shop\'s own offset). '
     + 'blockedUntil is when that staff member is free again (end plus clean-up time). '
     + 'With no slots, say reasonIfNone truthfully and offer nextOpenDate. Re-check if more than 2 minutes pass before booking.',
   async run(ctx, rawArgs, tx) {
@@ -165,7 +167,7 @@ export const checkAvailabilityAction = defineAction({
 
     const result = computeAvailability({
       timezone: tz,
-      locale: ctx.locale,
+      locale: intlLocale(ctx.locale),
       now: ctx.now,
       businessHours: data.businessHours,
       staff: catalog.staff.map((s) => ({

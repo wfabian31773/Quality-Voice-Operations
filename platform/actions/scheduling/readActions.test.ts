@@ -125,6 +125,24 @@ describe('scheduling.list_services', () => {
     expect(priceText({ priceKind: 'hidden', priceCents: 4500, priceMaxCents: null })).toBeNull();
     expect(priceText({ priceKind: 'fixed', priceCents: null, priceMaxCents: null })).toBeNull();
   });
+
+  it('says the currency in words in Spanish, since TTS reads "$" as pesos', () => {
+    expect(priceText({ priceKind: 'fixed', priceCents: 3000, priceMaxCents: null }, 'es')).toBe('30 dólares');
+    expect(priceText({ priceKind: 'fixed', priceCents: 3050, priceMaxCents: null }, 'es')).toBe('30.50 dólares');
+    expect(priceText({ priceKind: 'from', priceCents: 3000, priceMaxCents: null }, 'es')).toBe('desde 30 dólares');
+    expect(priceText({ priceKind: 'range', priceCents: 3000, priceMaxCents: 4500 }, 'es')).toBe('30 a 45 dólares');
+    expect(priceText({ priceKind: 'range', priceCents: 3000, priceMaxCents: null }, 'es')).toBe('desde 30 dólares');
+    expect(priceText({ priceKind: 'hidden', priceCents: 3000, priceMaxCents: null }, 'es')).toBeNull();
+  });
+
+  it.each([
+    [{}, { locale: 'es' }, ['20 dólares', null, 'desde 45 dólares']],
+    [{ lang: 'es' }, {}, ['20 dólares', null, 'desde 45 dólares']],
+    [{}, { locale: 'en-US' }, ['$20', null, 'from $45']],
+  ])('words priceText in the language of the call: %j %j', async (input, extra, prices) => {
+    const { result } = await run('scheduling.list_services', input, setup(), extra);
+    expect(result.ok && (result.data as { priceText: string | null }[]).map((s) => s.priceText)).toEqual(prices);
+  });
 });
 
 describe('scheduling.list_staff', () => {
@@ -299,9 +317,9 @@ describe('scheduling.check_availability', () => {
       ok: true,
       data: {
         slots: [
-          { start: '2026-10-20T13:00:00.000Z', end: '2026-10-20T13:30:00.000Z', blockedUntil: '2026-10-20T13:30:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 9 AM' },
-          { start: '2026-10-20T16:45:00.000Z', end: '2026-10-20T17:15:00.000Z', blockedUntil: '2026-10-20T17:15:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 12:45 PM' },
-          { start: '2026-10-20T20:30:00.000Z', end: '2026-10-20T21:00:00.000Z', blockedUntil: '2026-10-20T21:00:00.000Z', staffId: 'dana', staffName: 'Dana', spoken: 'tomorrow at 4:30 PM' },
+          { start: '2026-10-20T13:00:00.000Z', end: '2026-10-20T13:30:00.000Z', blockedUntil: '2026-10-20T13:30:00.000Z', staffId: 'dana', staffName: 'Dana', localTime: '2026-10-20T09:00:00-04:00', spoken: 'tomorrow at 9 AM' },
+          { start: '2026-10-20T16:45:00.000Z', end: '2026-10-20T17:15:00.000Z', blockedUntil: '2026-10-20T17:15:00.000Z', staffId: 'dana', staffName: 'Dana', localTime: '2026-10-20T12:45:00-04:00', spoken: 'tomorrow at 12:45 PM' },
+          { start: '2026-10-20T20:30:00.000Z', end: '2026-10-20T21:00:00.000Z', blockedUntil: '2026-10-20T21:00:00.000Z', staffId: 'dana', staffName: 'Dana', localTime: '2026-10-20T16:30:00-04:00', spoken: 'tomorrow at 4:30 PM' },
         ],
       },
     });
@@ -319,7 +337,7 @@ describe('scheduling.check_availability', () => {
     const { result } = await run('scheduling.check_availability', { serviceIds: ['cut', 'beard'], date: '2026-10-20', limit: 1 }, env);
     expect(result.ok && result.data).toEqual({
       // Beard trim's 5-minute buffer: Marco is free again at 10:20, not 10:15.
-      slots: [{ start: '2026-10-20T13:30:00.000Z', end: '2026-10-20T14:15:00.000Z', blockedUntil: '2026-10-20T14:20:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 9:30 AM' }],
+      slots: [{ start: '2026-10-20T13:30:00.000Z', end: '2026-10-20T14:15:00.000Z', blockedUntil: '2026-10-20T14:20:00.000Z', staffId: 'marco', staffName: 'Marco', localTime: '2026-10-20T09:30:00-04:00', spoken: 'tomorrow at 9:30 AM' }],
     });
   });
 
@@ -364,7 +382,7 @@ describe('scheduling.check_availability', () => {
       now: new Date('2026-10-19T22:00:00Z'),
     });
     expect(result.ok && result.data).toEqual({
-      slots: [{ start: '2026-10-20T16:00:00.000Z', end: '2026-10-20T16:15:00.000Z', blockedUntil: '2026-10-20T16:20:00.000Z', staffId: 'marco', staffName: 'Marco', spoken: 'tomorrow at 12 PM' }],
+      slots: [{ start: '2026-10-20T16:00:00.000Z', end: '2026-10-20T16:15:00.000Z', blockedUntil: '2026-10-20T16:20:00.000Z', staffId: 'marco', staffName: 'Marco', localTime: '2026-10-20T12:00:00-04:00', spoken: 'tomorrow at 12 PM' }],
     });
   });
 

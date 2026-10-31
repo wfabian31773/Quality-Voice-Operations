@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { formatCurrency } from '../../core/formatCurrency';
 import { actionFail, actionOk, defineAction } from '../core';
 import { loadCatalog, type CatalogService } from './availability';
+import { readbackLang } from './readback';
 import { resolveServiceByName } from './serviceMatch';
 
 const input = z.object({
@@ -9,7 +10,7 @@ const input = z.object({
   staffId: z.string().min(1).max(255).optional(),
   /** What the caller called the service ("a skin fade", "degradado"); only the matching services come back. */
   query: z.string().min(1).max(80).optional(),
-  /** Caller's language; only breaks ties between equally long EN/ES terms in `query`. */
+  /** Caller's language: breaks ties between equally long EN/ES terms in `query` and words priceText; defaults to the call's language. */
   lang: z.enum(['en', 'es']).optional(),
 });
 
@@ -17,7 +18,7 @@ const service = z.object({
   id: z.string(),
   name: z.string(),
   durationMin: z.number().int(),
-  /** Exactly what the agent says ("from $45"); null = the shop will confirm. */
+  /** Exactly what the agent says ("from $45", "desde 45 dólares"); null = the shop will confirm. */
   priceText: z.string().nullable(),
   staffIds: z.array(z.string()),
   /** Other names callers use for it (catalog aliases); omitted when there are none. */
@@ -36,6 +37,15 @@ const PRICE_WORDS = {
   es: { from: 'desde', to: 'a' },
 } as const;
 
+/** Spanish TTS reads "$" as pesos, so Spanish says the currency in words. */
+function bareDollars(cents: number): string {
+  return dollars(cents).replace('$', '');
+}
+
+function spanishDollars(cents: number): string {
+  return `${bareDollars(cents)} dólares`;
+}
+
 /** Spoken price text for a service (§1.5: say it exactly). English unless `lang` is 'es'. */
 export function priceText(
   s: Pick<CatalogService, 'priceKind' | 'priceCents' | 'priceMaxCents'>,
@@ -43,15 +53,17 @@ export function priceText(
 ): string | null {
   if (s.priceCents === null) return null;
   const words = PRICE_WORDS[lang];
+  const money = lang === 'es' ? spanishDollars : dollars;
+  const low = lang === 'es' ? bareDollars : dollars;
   switch (s.priceKind) {
     case 'fixed':
-      return dollars(s.priceCents);
+      return money(s.priceCents);
     case 'from':
-      return `${words.from} ${dollars(s.priceCents)}`;
+      return `${words.from} ${money(s.priceCents)}`;
     case 'range':
       return s.priceMaxCents === null
-        ? `${words.from} ${dollars(s.priceCents)}`
-        : `${dollars(s.priceCents)} ${words.to} ${dollars(s.priceMaxCents)}`;
+        ? `${words.from} ${money(s.priceCents)}`
+        : `${low(s.priceCents)} ${words.to} ${money(s.priceMaxCents)}`;
     default:
       return null;
   }
@@ -86,12 +98,13 @@ export const listServicesAction = defineAction({
     const services = args.query
       ? resolveServiceByName(catalog, args.query, args.lang).candidates
       : catalog.services;
+    const lang = args.lang ?? readbackLang(ctx.locale);
     const items = services
       .map((s) => ({
         id: s.id,
         name: s.name,
         durationMin: s.durationMin,
-        priceText: priceText(s),
+        priceText: priceText(s, lang),
         staffIds: [...(catalog.staffByService.get(s.id) ?? [])],
         ...(s.aliases && s.aliases.length > 0 ? { aliases: s.aliases } : {}),
       }))
