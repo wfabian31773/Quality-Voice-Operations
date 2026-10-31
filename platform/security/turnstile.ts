@@ -48,6 +48,7 @@ type SiteverifyResponse = {
   success?: boolean;
   hostname?: string;
   action?: string;
+  'error-codes'?: string[];
 };
 
 export function turnstileSecret(): string {
@@ -100,6 +101,22 @@ function fail(reason: TurnstileFailureReason): TurnstileVerifyFailure {
   return { ok: false, status: 400, reason, error: ERRORS[reason] };
 }
 
+// Never add the token or secret to this log line.
+function reject(
+  reason: TurnstileFailureReason,
+  expectedAction: string,
+  data?: SiteverifyResponse,
+): TurnstileVerifyFailure {
+  logger.warn('Turnstile verification rejected', {
+    reason,
+    expectedAction,
+    hostname: data?.hostname,
+    action: data?.action,
+    errorCodes: data?.['error-codes'],
+  });
+  return fail(reason);
+}
+
 /**
  * Verifies a Cloudflare Turnstile token against siteverify, then checks
  * that the returned hostname is on the QVO allow-list and that `action`
@@ -121,7 +138,7 @@ export async function verifyTurnstile(opts: {
   }
 
   const token = typeof opts.token === 'string' ? opts.token.trim() : '';
-  if (!token) return fail('missing_token');
+  if (!token) return reject('missing_token', opts.expectedAction);
 
   try {
     const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
@@ -134,12 +151,16 @@ export async function verifyTurnstile(opts: {
       }),
     });
     const data = (await response.json()) as SiteverifyResponse;
-    if (data.success !== true) return fail('verification_failed');
-    if (!isAllowedTurnstileHostname(data.hostname)) return fail('hostname_mismatch');
-    if ((data.action ?? '').trim() !== opts.expectedAction) return fail('action_mismatch');
+    if (data.success !== true) return reject('verification_failed', opts.expectedAction, data);
+    if (!isAllowedTurnstileHostname(data.hostname)) return reject('hostname_mismatch', opts.expectedAction, data);
+    if ((data.action ?? '').trim() !== opts.expectedAction) return reject('action_mismatch', opts.expectedAction, data);
     return { ok: true };
   } catch (err) {
-    logger.error('Turnstile verification failed', { error: String(err) });
+    logger.error('Turnstile verification failed', {
+      reason: 'verification_failed',
+      expectedAction: opts.expectedAction,
+      error: String(err),
+    });
     return fail('verification_failed');
   }
 }

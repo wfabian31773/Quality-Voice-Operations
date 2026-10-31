@@ -144,7 +144,8 @@ export default function BookDemo() {
     let cancelled = false;
     fetch('/api/auth/signup-config')
       .then(async (res) => {
-        const raw = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(`signup-config returned ${res.status}`);
+        const raw = await res.json();
         if (cancelled) return;
         const parsed = parseSignupCaptchaConfig(raw, BUILD_TIME_TURNSTILE_SITE_KEY);
         setCaptchaRequired(parsed.captchaRequired);

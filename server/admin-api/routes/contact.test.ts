@@ -146,6 +146,46 @@ describe('POST /book-demo', () => {
     expect(res.body.error).toMatch(/CAPTCHA verification is required/i);
     expect(a.recordLeadMock).not.toHaveBeenCalled();
   });
+
+  describe('with siteverify mocked', () => {
+    const originalHosts = process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+
+    beforeEach(() => {
+      process.env.TURNSTILE_SECRET_KEY = 'test-turnstile-secret';
+      delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      if (originalHosts === undefined) delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+      else process.env.TURNSTILE_ALLOWED_HOSTNAMES = originalHosts;
+    });
+
+    const submitWithSiteverifyAction = (action: string) => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({
+        json: async () => ({ success: true, hostname: 'api.qualityvoiceoperations.com', action }),
+      })));
+      return request(app()).post('/book-demo').send({
+        name: 'A',
+        email: 'a@b.com',
+        company: 'Acme',
+        captchaToken: 'ok-token',
+      });
+    };
+
+    it("records the lead when the token's action is book-demo", async () => {
+      const res = await submitWithSiteverifyAction('book-demo');
+      expect(res.status).toBe(200);
+      expect(a.recordLeadMock).toHaveBeenCalledWith(expect.objectContaining({ source: 'book_demo' }));
+    });
+
+    it("blocks recordLead when the token's action is another form's", async () => {
+      const res = await submitWithSiteverifyAction('signup');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/action does not match/i);
+      expect(a.recordLeadMock).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('POST /roi-lead', () => {

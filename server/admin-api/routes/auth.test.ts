@@ -259,6 +259,56 @@ describe('POST /auth/signup captcha gate', () => {
       else process.env.TURNSTILE_SECRET_KEY = previous;
     }
   });
+
+  describe('with siteverify mocked', () => {
+    const original = {
+      secret: process.env.TURNSTILE_SECRET_KEY,
+      hosts: process.env.TURNSTILE_ALLOWED_HOSTNAMES,
+    };
+
+    beforeEach(() => {
+      process.env.TURNSTILE_SECRET_KEY = 'real-secret';
+      delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      if (original.secret === undefined) delete process.env.TURNSTILE_SECRET_KEY;
+      else process.env.TURNSTILE_SECRET_KEY = original.secret;
+      if (original.hosts === undefined) delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+      else process.env.TURNSTILE_ALLOWED_HOSTNAMES = original.hosts;
+    });
+
+    const signupWithSiteverifyAction = (action: string) => {
+      vi.stubGlobal('fetch', vi.fn(async () => ({
+        json: async () => ({ success: true, hostname: 'api.qualityvoiceoperations.com', action }),
+      })));
+      return request(app()).post('/auth/signup').send({
+        name: 'Ada',
+        email: 'ada@example.com',
+        password: 'password1',
+        plan: 'starter',
+        captchaToken: 'ok-token',
+      });
+    };
+
+    it("reaches the signup transaction when the token's action is signup", async () => {
+      // An existing email stops the flow at its first query, which proves the gate passed.
+      a.clientQueryMock.mockImplementation(async (sql: string) => (
+        sql.includes('SELECT id FROM users') ? { rows: [{ id: 'existing' }] } : { rows: [] }
+      ));
+      const res = await signupWithSiteverifyAction('signup');
+      expect(res.status).toBe(409);
+      expect(a.clientQueryMock).toHaveBeenCalledWith('BEGIN');
+    });
+
+    it("blocks signup when the token's action is another form's", async () => {
+      const res = await signupWithSiteverifyAction('book-demo');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/action does not match/i);
+      expect(a.clientQueryMock).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('POST /auth/accept-invite', () => {

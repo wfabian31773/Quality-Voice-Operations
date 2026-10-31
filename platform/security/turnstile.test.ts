@@ -1,4 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const log = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn() }));
+
+vi.mock('../core/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), debug: vi.fn(), warn: log.warn, error: log.error }),
+}));
+
 import {
   DEFAULT_TURNSTILE_ALLOWED_HOSTNAMES,
   TURNSTILE_ACTIONS,
@@ -32,6 +39,8 @@ describe('verifyTurnstile', () => {
   beforeEach(() => {
     process.env.TURNSTILE_SECRET_KEY = 'test-turnstile-secret';
     delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+    log.warn.mockReset();
+    log.error.mockReset();
   });
 
   afterEach(() => {
@@ -136,5 +145,85 @@ describe('verifyTurnstile', () => {
       error: 'CAPTCHA verification is required',
     });
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(log.warn).toHaveBeenCalledWith('Turnstile verification rejected', expect.objectContaining({
+      reason: 'missing_token',
+      expectedAction: TURNSTILE_ACTIONS.bookDemo,
+    }));
+  });
+
+  it('rejects success:false and logs the error codes without the token or secret', async () => {
+    mockSiteverify({ success: false, 'error-codes': ['timeout-or-duplicate'] });
+
+    const result = await verifyTurnstile({
+      token: 'sensitive-token',
+      ip: '203.0.113.10',
+      expectedAction: TURNSTILE_ACTIONS.signup,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      reason: 'verification_failed',
+      error: 'CAPTCHA verification failed. Please try again.',
+    });
+    expect(log.warn).toHaveBeenCalledWith('Turnstile verification rejected', {
+      reason: 'verification_failed',
+      expectedAction: TURNSTILE_ACTIONS.signup,
+      hostname: undefined,
+      action: undefined,
+      errorCodes: ['timeout-or-duplicate'],
+    });
+    const logged = JSON.stringify(log.warn.mock.calls);
+    expect(logged).not.toContain('sensitive-token');
+    expect(logged).not.toContain('test-turnstile-secret');
+  });
+
+  it('logs the returned hostname and action on a mismatch', async () => {
+    mockSiteverify({
+      success: true,
+      hostname: 'evil.example',
+      action: TURNSTILE_ACTIONS.signup,
+    });
+
+    await verifyTurnstile({
+      token: 'sensitive-token',
+      ip: '203.0.113.10',
+      expectedAction: TURNSTILE_ACTIONS.bookDemo,
+    });
+
+    expect(log.warn).toHaveBeenCalledWith('Turnstile verification rejected', {
+      reason: 'hostname_mismatch',
+      expectedAction: TURNSTILE_ACTIONS.bookDemo,
+      hostname: 'evil.example',
+      action: TURNSTILE_ACTIONS.signup,
+      errorCodes: undefined,
+    });
+  });
+
+  it('fails closed when the siteverify request rejects', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+
+    const result = await verifyTurnstile({
+      token: 'sensitive-token',
+      ip: '203.0.113.10',
+      expectedAction: TURNSTILE_ACTIONS.bookDemo,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      reason: 'verification_failed',
+      error: 'CAPTCHA verification failed. Please try again.',
+    });
+    expect(log.error).toHaveBeenCalledWith('Turnstile verification failed', {
+      reason: 'verification_failed',
+      expectedAction: TURNSTILE_ACTIONS.bookDemo,
+      error: 'Error: network down',
+    });
+    const logged = JSON.stringify(log.error.mock.calls);
+    expect(logged).not.toContain('sensitive-token');
+    expect(logged).not.toContain('test-turnstile-secret');
   });
 });
