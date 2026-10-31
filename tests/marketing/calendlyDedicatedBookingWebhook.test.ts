@@ -297,8 +297,11 @@ describe('POST /book-demo/calendly-webhook — signature verification', () => {
     expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
   });
 
-  // KNOWN GAP: server/admin-api/routes/contact.ts verifies only the first v1; follow-up needed
-  it.fails('accepts a multi-v1 signature header when an invalid v1 precedes the valid one', async () => {
+  // KNOWN GAP: server/admin-api/routes/contact.ts verifies only the first v1,
+  // so a valid signature after a stale one is rejected. Once fixed, flip this
+  // to expect 200 with { ok: true, leadId: 7, duplicate: false } and one
+  // attachBookingToLeadById call.
+  it('rejects with 401 a multi-v1 signature header when an invalid v1 precedes the valid one', async () => {
     const { app, mocks } = await buildApp({
       findLeadById: vi.fn(async (id: number) => ({
         id,
@@ -321,9 +324,10 @@ describe('POST /book-demo/calendly-webhook — signature verification', () => {
       .set('Content-Type', 'application/json')
       .set('Calendly-Webhook-Signature', `t=${t},v1=${fakeOld},v1=${goodHmac}`)
       .send(body);
-    expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ ok: true, leadId: 7, duplicate: false });
-    expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
+    expect(r.status).toBe(401);
+    expect(r.body).toEqual({ error: 'Invalid signature' });
+    expect(mocks.attachBookingToLeadById).not.toHaveBeenCalled();
+    expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
   });
 
   it('returns 500 when CALENDLY_WEBHOOK_SECRET is missing in production-like env (no unsigned escape hatch)', async () => {

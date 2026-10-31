@@ -231,8 +231,8 @@ describe('findBlockingOverride / buildOverrideConflictResponse', () => {
     const result = await findBlockingOverride(
       fakePool,
       TENANT,
-      '2026-05-01T12:30:00',
-      '2026-05-01T12:45:00',
+      '2026-05-01T12:30:00Z',
+      '2026-05-01T12:45:00Z',
       PROVIDER_A,
     );
     expect(result?.id).toBe('ovr-1');
@@ -255,8 +255,8 @@ describe('findBlockingOverride / buildOverrideConflictResponse', () => {
     const result = await findBlockingOverride(
       fakePool,
       TENANT,
-      '2026-05-01T08:00:00',
-      '2026-05-01T08:30:00',
+      '2026-05-01T08:00:00Z',
+      '2026-05-01T08:30:00Z',
       PROVIDER_A,
     );
     expect(result?.id).toBe('ovr-day');
@@ -279,8 +279,8 @@ describe('findBlockingOverride / buildOverrideConflictResponse', () => {
     const result = await findBlockingOverride(
       fakePool,
       TENANT,
-      '2026-05-01T14:00:00',
-      '2026-05-01T15:00:00',
+      '2026-05-01T14:00:00Z',
+      '2026-05-01T15:00:00Z',
       PROVIDER_A,
     );
     expect(result).toBeNull();
@@ -313,8 +313,8 @@ describe('findBlockingOverride / buildOverrideConflictResponse', () => {
     const result = await findBlockingOverride(
       fakePool,
       TENANT,
-      '2026-05-01T12:30:00',
-      '2026-05-01T12:45:00',
+      '2026-05-01T12:30:00Z',
+      '2026-05-01T12:45:00Z',
       PROVIDER_A,
     );
     expect(result).toBeNull();
@@ -337,8 +337,8 @@ describe('findBlockingOverride / buildOverrideConflictResponse', () => {
     const response = await buildOverrideConflictResponse(
       fakePool,
       TENANT,
-      '2026-05-01T12:30:00',
-      '2026-05-01T12:45:00',
+      '2026-05-01T12:30:00Z',
+      '2026-05-01T12:45:00Z',
       PROVIDER_A,
     );
     expect(response).not.toBeNull();

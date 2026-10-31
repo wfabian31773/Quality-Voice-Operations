@@ -179,7 +179,7 @@ jobs:
         if: steps.gate.outputs.run_spec == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: ".node-version"
           cache: "npm"
 
       - name: Install root dependencies
