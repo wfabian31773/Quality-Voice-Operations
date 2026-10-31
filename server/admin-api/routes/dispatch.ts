@@ -23,7 +23,7 @@ import {
   ObjectStorageService,
   ObjectNotFoundError,
 } from '../../replit_integrations/object_storage';
-import { storageKeys } from '../../../platform/storage';
+import { InvalidObjectPathError, isEntityObjectPath, storageKeys } from '../../../platform/storage';
 import {
   isObjectStorageConfigured,
   requireObjectStorage,
@@ -2079,6 +2079,9 @@ export const addAttachmentHandler: RequestHandler = async (req, res) => {
           { owner: `tenant:${tenantId}`, visibility: 'private' },
         );
       } catch (err) {
+        if (err instanceof InvalidObjectPathError) {
+          return res.status(400).json({ error: 'Invalid object_path' });
+        }
         if (err instanceof ObjectNotFoundError) {
           return res.status(400).json({
             error: 'Uploaded object not found - upload to the presigned URL before attaching',
@@ -2207,8 +2210,12 @@ export const getAttachmentFileHandler: RequestHandler = async (req, res) => {
     if (rows.length === 0 || !rows[0].object_path) {
       return res.status(404).json({ error: 'Attachment file not found' });
     }
+    const objectPath = rows[0].object_path as string;
+    if (!isEntityObjectPath(objectPath)) {
+      return res.status(404).json({ error: 'File no longer available' });
+    }
     const storage = new ObjectStorageService();
-    await storage.streamStoredObject(rows[0].object_path as string, res, {
+    await storage.streamStoredObject(objectPath, res, {
       cacheTtlSec: 60,
     });
     return;
@@ -4140,6 +4147,7 @@ export const getCompletionPhotoHandler: RequestHandler = async (req, res) => {
       cacheTtlSec: 300,
       downloadFilename: filename,
       contentDisposition: 'inline',
+      fallbackContentType: (row.mime_type as string | null) ?? undefined,
     });
   } catch (err) {
     if (err instanceof ObjectNotFoundError) {

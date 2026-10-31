@@ -28,6 +28,11 @@ export function isEntityObjectPath(path: string): boolean {
   return path.startsWith('/objects/');
 }
 
+/** The only path shape a client may attach: `/objects/uploads/<id>`. */
+export function isCanonicalUploadObjectPath(path: string): boolean {
+  return /^\/objects\/uploads\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(path);
+}
+
 export function entityIdFromObjectPath(path: string): string {
   if (!isEntityObjectPath(path)) {
     throw new Error('Not an /objects/ entity path');

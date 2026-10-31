@@ -1,4 +1,5 @@
-export { ObjectNotFoundError, StorageNotConfiguredError } from './errors';
+export { InvalidObjectPathError, ObjectNotFoundError, StorageNotConfiguredError } from './errors';
+export { isCanonicalUploadObjectPath, isEntityObjectPath } from './paths';
 export { storageKeys } from './keys';
 export {
   createLocalStorageAdapter,

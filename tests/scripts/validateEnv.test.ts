@@ -472,6 +472,29 @@ describe('validateEnvironment() — warnings', () => {
     expect(result.warnings.join('\n')).not.toMatch(/sk_live|AKIA/);
   });
 
+  it('warns on an unknown OBJECT_STORAGE_PROVIDER without printing its value (does not fail boot)', async () => {
+    applyAllProductionVars();
+    process.env.OBJECT_STORAGE_PROVIDER = 'hunter2-value';
+    const logSpy = vi.spyOn(console, 'log');
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.passed).toBe(true);
+    expect(result.warnings.some(w => w.includes('OBJECT_STORAGE_PROVIDER must be one of'))).toBe(true);
+    expect(result.warnings.join('\n')).not.toContain('hunter2-value');
+    expect(logSpy.mock.calls.flat().join('\n')).not.toContain('hunter2-value');
+    logSpy.mockRestore();
+  });
+
+  it('does not warn on the disk alias for OBJECT_STORAGE_PROVIDER', async () => {
+    applyAllProductionVars();
+    process.env.OBJECT_STORAGE_PROVIDER = 'disk';
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.warnings.some(w => w.includes('OBJECT_STORAGE_PROVIDER'))).toBe(false);
+  });
+
   it('warns when CONNECTOR_ENCRYPTION_KEY is shorter than 64 hex chars', async () => {
     applyAllProductionVars();
     process.env.CONNECTOR_ENCRYPTION_KEY = 'tooshort';

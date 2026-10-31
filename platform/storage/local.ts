@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
@@ -55,10 +55,42 @@ export class LocalDiskStorage implements StorageAdapter {
     }
     const root = path.resolve(this.rootDir);
     const resolved = path.resolve(root, relative);
-    if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+    if (!resolved.startsWith(`${root}${path.sep}`)) {
       throw new Error('Invalid object key');
     }
     return resolved;
+  }
+
+  /**
+   * {@link resolveFsPath} plus the on-disk check: no path component under the
+   * root may be a symlink, and the deepest existing one must really be inside
+   * the root.
+   */
+  private async resolveContainedFsPath(key: string): Promise<string> {
+    const fsPath = this.resolveFsPath(key);
+    const root = path.resolve(this.rootDir);
+    let deepestExisting = root;
+    try {
+      for (const part of path.relative(root, fsPath).split(path.sep)) {
+        const next = path.join(deepestExisting, part);
+        if ((await lstat(next)).isSymbolicLink()) throw new Error('Invalid object key');
+        deepestExisting = next;
+      }
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw err;
+    }
+    try {
+      const realRoot = await realpath(root);
+      const real = await realpath(deepestExisting);
+      if (real !== realRoot && !real.startsWith(`${realRoot}${path.sep}`)) {
+        throw new Error('Invalid object key');
+      }
+    } catch (err) {
+      // The root itself does not exist yet, so nothing below it can escape.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+    return fsPath;
   }
 
   private persistablePath(key: string): string {
@@ -66,7 +98,7 @@ export class LocalDiskStorage implements StorageAdapter {
   }
 
   async put(key: string, body: Buffer | string, _options?: PutObjectOptions): Promise<string> {
-    const fsPath = this.resolveFsPath(key);
+    const fsPath = await this.resolveContainedFsPath(key);
     await mkdir(path.dirname(fsPath), { recursive: true });
     await writeFile(fsPath, body);
     return this.persistablePath(key);
@@ -74,7 +106,7 @@ export class LocalDiskStorage implements StorageAdapter {
 
   async get(key: string): Promise<Buffer> {
     try {
-      return await readFile(this.resolveFsPath(key));
+      return await readFile(await this.resolveContainedFsPath(key));
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code === 'ENOENT') throw new ObjectNotFoundError();
@@ -84,7 +116,7 @@ export class LocalDiskStorage implements StorageAdapter {
 
   async getMetadata(key: string): Promise<StoredObjectMetadata> {
     try {
-      const info = await stat(this.resolveFsPath(key));
+      const info = await stat(await this.resolveContainedFsPath(key));
       return { contentType: 'application/octet-stream', size: info.size };
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
@@ -95,7 +127,7 @@ export class LocalDiskStorage implements StorageAdapter {
 
   async exists(key: string): Promise<boolean> {
     try {
-      await stat(this.resolveFsPath(key));
+      await stat(await this.resolveContainedFsPath(key));
       return true;
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
@@ -106,7 +138,7 @@ export class LocalDiskStorage implements StorageAdapter {
 
   async delete(key: string): Promise<boolean> {
     try {
-      await unlink(this.resolveFsPath(key));
+      await unlink(await this.resolveContainedFsPath(key));
       return true;
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
@@ -117,7 +149,7 @@ export class LocalDiskStorage implements StorageAdapter {
 
   async createReadStream(key: string): Promise<Readable> {
     if (!(await this.exists(key))) throw new ObjectNotFoundError();
-    return createReadStream(this.resolveFsPath(key));
+    return createReadStream(await this.resolveContainedFsPath(key));
   }
 
   async getSignedUploadUrl(key: string, _ttlSec: number): Promise<SignedUploadUrl> {
@@ -136,7 +168,7 @@ export class LocalDiskStorage implements StorageAdapter {
     if (rawPath.startsWith('file://')) {
       const pathname = new URL(rawPath).pathname;
       const root = path.resolve(this.rootDir);
-      if (pathname.startsWith(root)) {
+      if (pathname.startsWith(`${root}/`)) {
         return `/objects/${stripLeadingSlashes(pathname.slice(root.length))}`;
       }
     }

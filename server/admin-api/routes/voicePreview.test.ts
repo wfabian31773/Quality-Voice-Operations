@@ -121,6 +121,17 @@ describe('POST /agents/voice-preview synthesis', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('falls back to TTS when the object storage read rejects', async () => {
+    process.env.PRIVATE_OBJECT_DIR = '/bucket/private';
+    a.existsMock.mockResolvedValue(true);
+    a.getMock.mockRejectedValue(new Error('storage down'));
+    fetchMock.mockResolvedValue({ ok: true, arrayBuffer: async () => new TextEncoder().encode('AUDIO').buffer });
+    const res = await request(app()).post('/agents/voice-preview').send({ voice: VOICE, language: 'en', greeting: uniqueGreeting() });
+    expect(res.status).toBe(200);
+    expect(res.headers['x-voice-preview-cache']).toBe('miss');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('maps an upstream auth failure to 503', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 401, text: async () => 'unauthorized' });
     const res = await request(app()).post('/agents/voice-preview').send({ voice: VOICE, language: 'en', greeting: uniqueGreeting() });

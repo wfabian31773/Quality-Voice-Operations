@@ -6,6 +6,14 @@ export class ObjectNotFoundError extends Error {
   }
 }
 
+export class InvalidObjectPathError extends Error {
+  constructor() {
+    super('Invalid object path');
+    this.name = 'InvalidObjectPathError';
+    Object.setPrototypeOf(this, InvalidObjectPathError.prototype);
+  }
+}
+
 export class StorageNotConfiguredError extends Error {
   constructor(message = 'Object storage is not configured') {
     super(message);

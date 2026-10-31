@@ -5,8 +5,9 @@ import {
   setObjectAclPolicy,
   type ObjectAclPolicy,
 } from '../../server/replit_integrations/object_storage/objectAcl';
-import { ObjectNotFoundError, StorageNotConfiguredError } from './errors';
+import { InvalidObjectPathError, ObjectNotFoundError, StorageNotConfiguredError } from './errors';
 import {
+  isCanonicalUploadObjectPath,
   isEntityObjectPath,
   parseAbsoluteObjectPath,
   stripLeadingSlashes,
@@ -50,6 +51,7 @@ export function readReplitPrivateDir(env: Record<string, string | undefined> = p
 
 function toFullPath(privateDir: string, relativeKey: string): string {
   const cleanKey = stripLeadingSlashes(relativeKey);
+  if (!cleanKey) throw new Error('Invalid object key');
   return privateDir.endsWith('/') ? `${privateDir}${cleanKey}` : `${privateDir}/${cleanKey}`;
 }
 
@@ -92,22 +94,33 @@ export class ReplitSidecarStorage implements StorageAdapter {
     private readonly client: Storage = objectStorageClient,
   ) {}
 
+  /** `/<bucket>/<dir>`, whatever slashes PRIVATE_OBJECT_DIR was written with. */
   private privateDir(): string {
-    return readReplitPrivateDir(this.env);
+    return `/${stripLeadingSlashes(readReplitPrivateDir(this.env)).replace(/\/+$/, '')}`;
   }
 
   private locate(key: string): { bucketName: string; objectName: string; fullPath: string } {
     if (isEntityObjectPath(key)) {
-      const fullPath = toFullPath(this.privateDir(), key.slice('/objects/'.length));
-      const parsed = parseAbsoluteObjectPath(fullPath);
-      return { ...parsed, fullPath };
+      return this.locateAbsolute(toFullPath(this.privateDir(), key.slice('/objects/'.length)));
     }
     if (key.startsWith('/')) {
-      const parsed = parseAbsoluteObjectPath(key);
-      return { ...parsed, fullPath: key.startsWith('/') ? key : `/${key}` };
+      return this.locateAbsolute(key);
     }
-    const fullPath = toFullPath(this.privateDir(), key);
+    const dir = this.privateDir();
+    // Already under the private dir, just missing its leading slash.
+    if (`/${key}`.startsWith(`${dir}/`)) {
+      return this.locateAbsolute(`/${key}`);
+    }
+    return this.locateAbsolute(toFullPath(dir, key));
+  }
+
+  private locateAbsolute(fullPath: string): {
+    bucketName: string;
+    objectName: string;
+    fullPath: string;
+  } {
     const parsed = parseAbsoluteObjectPath(fullPath);
+    if (!parsed.objectName) throw new Error('Invalid object key');
     return { ...parsed, fullPath };
   }
 
@@ -202,10 +215,7 @@ export class ReplitSidecarStorage implements StorageAdapter {
     }
     const url = new URL(rawPath);
     const rawObjectPath = url.pathname;
-    let objectEntityDir = this.privateDir();
-    if (!objectEntityDir.endsWith('/')) {
-      objectEntityDir = `${objectEntityDir}/`;
-    }
+    const objectEntityDir = `${this.privateDir()}/`;
     if (!rawObjectPath.startsWith(objectEntityDir)) {
       return rawObjectPath;
     }
@@ -214,15 +224,13 @@ export class ReplitSidecarStorage implements StorageAdapter {
 
   async trySetAclPolicy(rawPath: string, aclPolicy: ObjectAclPolicy): Promise<string> {
     const normalizedPath = this.normalizeObjectPath(rawPath);
-    if (!normalizedPath.startsWith('/')) return normalizedPath;
+    if (!isCanonicalUploadObjectPath(normalizedPath)) throw new InvalidObjectPathError();
     const { bucketName, objectName } = this.locate(normalizedPath);
     const file = this.client.bucket(bucketName).file(objectName);
     const [exists] = await file.exists();
     if (!exists) throw new ObjectNotFoundError();
     await setObjectAclPolicy(file, aclPolicy);
-    return normalizedPath.startsWith('/objects/')
-      ? normalizedPath
-      : `/objects/${stripLeadingSlashes(normalizedPath.replace(this.privateDir(), ''))}`;
+    return normalizedPath;
   }
 
   async readAclVisibility(key: string): Promise<'public' | 'private'> {

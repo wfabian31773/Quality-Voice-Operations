@@ -1,5 +1,6 @@
 import { getPlatformPool, runWithRestrictedScope } from '../platform/db';
 import { validateBillingConfig } from '../platform/billing/stripe/plans';
+import { isKnownStorageProviderName, OBJECT_STORAGE_PROVIDERS } from '../platform/storage/types';
 import { resolveProcessRole, isRenderRuntime, REPLIT_ONLY_ENV_NAMES, type ProcessRole } from '../platform/runtime/processRole';
 
 type SplitRole = Exclude<ProcessRole, 'all'>;
@@ -128,7 +129,7 @@ const OPTIONAL_VARS: EnvVar[] = [
   // PR-00b: object storage adapter. Optional — unset keeps today's 503
   // "storage not configured" behaviour. Do not add these to render.yaml
   // from this PR; operators set them when the bucket is provisioned.
-  { name: 'OBJECT_STORAGE_PROVIDER', required: 'development', purpose: 'Object storage backend: s3 | local | replit. Auto-selects S3 when S3_BUCKET+keys are set, else Replit when PRIVATE_OBJECT_DIR is set, else local when OBJECT_STORAGE_LOCAL_DIR is set' },
+  { name: 'OBJECT_STORAGE_PROVIDER', required: 'development', purpose: 'Object storage backend: s3 | local | replit. Auto-selects Replit when PRIVATE_OBJECT_DIR is set, else S3 when S3_BUCKET+keys are set, else local when OBJECT_STORAGE_LOCAL_DIR is set' },
   { name: 'S3_ENDPOINT', required: 'development', purpose: 'S3-compatible endpoint (Supabase Storage: https://<ref>.supabase.co/storage/v1/s3). Omit for AWS S3' },
   { name: 'S3_REGION', required: 'development', purpose: 'S3 region (default us-east-1)' },
   { name: 'S3_BUCKET', required: 'development', purpose: 'S3 bucket name for private objects (recordings, exports, uploads)' },
@@ -444,6 +445,12 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean; role?: 
         warnings.push(`${name} is required when OBJECT_STORAGE_PROVIDER=s3 (see docs/ops/object-storage.md)`);
       }
     }
+  }
+
+  if (!isKnownStorageProviderName(process.env.OBJECT_STORAGE_PROVIDER)) {
+    warnings.push(
+      `OBJECT_STORAGE_PROVIDER must be one of ${OBJECT_STORAGE_PROVIDERS.join(', ')}; storage routes return 503 until it is fixed (see docs/ops/object-storage.md)`,
+    );
   }
 
   if (warnings.length > 0) {

@@ -136,7 +136,7 @@ async function readFromObjectStorage(hash: string): Promise<Buffer | null> {
     const adapter = getStorageAdapter();
     const key = storageKeys.voicePreview(hash);
     if (!(await adapter.exists(key))) return null;
-    return adapter.get(key);
+    return await adapter.get(key);
   } catch (err) {
     logger.warn('Voice preview object storage read failed', {
       hash: hash.slice(0, 12),

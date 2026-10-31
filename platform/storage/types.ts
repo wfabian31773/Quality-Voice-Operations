@@ -3,6 +3,13 @@ import type { Readable } from 'node:stream';
 export const OBJECT_STORAGE_PROVIDERS = ['s3', 'local', 'replit'] as const;
 export type ObjectStorageProvider = (typeof OBJECT_STORAGE_PROVIDERS)[number];
 
+/** Accepted OBJECT_STORAGE_PROVIDER spellings. Unset is valid (auto-detect). */
+export function isKnownStorageProviderName(raw: string | undefined): boolean {
+  const value = raw?.trim().toLowerCase();
+  if (!value || value === 'disk') return true;
+  return (OBJECT_STORAGE_PROVIDERS as readonly string[]).includes(value);
+}
+
 export interface PutObjectOptions {
   contentType?: string;
   cacheControl?: string;
@@ -24,6 +31,8 @@ export interface StreamObjectOptions {
   downloadFilename?: string;
   cacheTtlSec?: number;
   contentDisposition?: 'attachment' | 'inline';
+  /** Used when storage has no specific content type for the object. */
+  fallbackContentType?: string;
 }
 
 /**

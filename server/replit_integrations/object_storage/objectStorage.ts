@@ -3,8 +3,11 @@ import { randomUUID } from 'crypto';
 import type { File } from '@google-cloud/storage';
 import type { Readable } from 'node:stream';
 import {
+  InvalidObjectPathError,
   ObjectNotFoundError,
   getStorageAdapter,
+  isCanonicalUploadObjectPath,
+  isEntityObjectPath,
   isObjectStorageConfigured,
   objectStorageClient,
   readReplitPrivateDir,
@@ -30,6 +33,9 @@ export interface StorageObjectHandle {
   /** Present only for the Replit sidecar so existing ACL helpers keep working. */
   gcsFile?: File;
 }
+
+/** What backends report when an object was stored without a content type. */
+const GENERIC_CONTENT_TYPES = new Set(['application/octet-stream', 'binary/octet-stream']);
 
 class AdapterObjectHandle implements StorageObjectHandle {
   gcsFile?: File;
@@ -147,6 +153,9 @@ export class ObjectStorageService {
   }
 
   async getObjectEntityFile(objectPath: string): Promise<StorageObjectHandle> {
+    if (!isEntityObjectPath(objectPath)) {
+      throw new ObjectNotFoundError();
+    }
     const adapter = this.adapter();
     if (!(await adapter.exists(objectPath))) {
       throw new ObjectNotFoundError();
@@ -176,14 +185,28 @@ export class ObjectStorageService {
     return this.adapter().normalizeObjectPath(rawPath);
   }
 
+  /**
+   * Validate a client-supplied upload path and return it as
+   * `/objects/uploads/<id>`. Throws {@link InvalidObjectPathError} for any
+   * other shape and {@link ObjectNotFoundError} when nothing was uploaded.
+   */
   async trySetObjectEntityAclPolicy(rawPath: string, aclPolicy: ObjectAclPolicy): Promise<string> {
     const adapter = this.adapter();
-    const normalizedPath = adapter.normalizeObjectPath(rawPath);
-    if (!normalizedPath.startsWith('/')) {
-      return normalizedPath;
+    let normalizedPath: string;
+    try {
+      normalizedPath = adapter.normalizeObjectPath(rawPath);
+    } catch {
+      // Malformed URLs from the client (bad percent-encoding and the like).
+      throw new InvalidObjectPathError();
+    }
+    if (!isCanonicalUploadObjectPath(normalizedPath)) {
+      throw new InvalidObjectPathError();
     }
     if (adapter instanceof ReplitSidecarStorage) {
       return adapter.trySetAclPolicy(normalizedPath, aclPolicy);
+    }
+    if (!(await adapter.exists(normalizedPath))) {
+      throw new ObjectNotFoundError();
     }
     return normalizedPath;
   }
@@ -210,7 +233,14 @@ export class ObjectStorageService {
       throw new ObjectNotFoundError();
     }
     const metadata = await adapter.getMetadata(fullObjectPath);
-    res.setHeader('Content-Type', metadata.contentType || 'application/octet-stream');
+    const storedType = metadata.contentType?.toLowerCase();
+    const hasSpecificType = storedType && !GENERIC_CONTENT_TYPES.has(storedType);
+    res.setHeader(
+      'Content-Type',
+      (hasSpecificType ? metadata.contentType : options?.fallbackContentType) ||
+        metadata.contentType ||
+        'application/octet-stream',
+    );
     if (metadata.size != null) {
       res.setHeader('Content-Length', String(metadata.size));
     }

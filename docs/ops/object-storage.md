@@ -18,7 +18,16 @@ as a production backend.
 | `s3` | S3-compatible API (Supabase Storage, AWS S3, MinIO) | Render / production |
 | `local` | Directory on disk | Vitest and offline development |
 | `replit` | Replit object-storage sidecar (`127.0.0.1:1106`) | Legacy Replit host |
-| unset | Auto: S3 if the S3 credential trio is set, else Replit if `PRIVATE_OBJECT_DIR` is set, else local if `OBJECT_STORAGE_LOCAL_DIR` is set, else **not configured** | |
+| unset | Auto: Replit if `PRIVATE_OBJECT_DIR` is set, else S3 if the S3 credential trio is set, else local if `OBJECT_STORAGE_LOCAL_DIR` is set, else **not configured** | |
+
+`PRIVATE_OBJECT_DIR` wins over the S3 names while the provider is unset, so
+adding S3 credentials to a Replit host does not move it off its bucket. To use
+S3 on a host that still has `PRIVATE_OBJECT_DIR`, set
+`OBJECT_STORAGE_PROVIDER=s3`.
+
+Any other `OBJECT_STORAGE_PROVIDER` value counts as **not configured**: routes
+return 503, the server logs the variable name once, and `validate-env` warns.
+Neither prints the value.
 
 When nothing is configured, upload / attachment / photo / route-export routes
 still return **503 `storage not configured`**. Voice-preview warm-tier caching
@@ -74,6 +83,10 @@ Every product write uses `storageKeys` in `platform/storage/keys.ts`:
 
 Persistable paths returned by `put` are `/<bucket>/<object>`. Upload flows
 also use `/objects/<entityId>`. Both resolve through the same adapter.
+
+Dispatch attachments accept only an `object_path` that normalizes to
+`/objects/uploads/<id>` and that exists in storage; anything else is a 400.
+Attachment downloads serve only `/objects/` paths.
 
 ## What this PR does not do
 

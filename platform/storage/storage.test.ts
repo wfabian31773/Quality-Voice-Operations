@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { PassThrough, Readable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ObjectNotFoundError, StorageNotConfiguredError } from './errors';
+import { InvalidObjectPathError, ObjectNotFoundError, StorageNotConfiguredError } from './errors';
 import { storageKeys } from './keys';
 import { createLocalStorageAdapter, LocalDiskStorage, LOCAL_STORAGE_URL_SCHEME } from './local';
 import {
@@ -13,6 +14,7 @@ import {
   resetStorageAdapterForTests,
   resolveStorageProvider,
 } from './resolve';
+import { ReplitSidecarStorage } from './replit';
 import { createS3StorageAdapter, isS3StorageConfigured } from './s3';
 import { ObjectStorageService } from '../../server/replit_integrations/object_storage/objectStorage';
 
@@ -98,10 +100,37 @@ describe('resolveStorageProvider', () => {
     ).toBe('s3');
   });
 
+  it('prefers PRIVATE_OBJECT_DIR over S3 names unless s3 is explicit', () => {
+    const env = {
+      PRIVATE_OBJECT_DIR: '/bucket/private',
+      S3_BUCKET: 'qvo',
+      S3_ACCESS_KEY_ID: 'id',
+      S3_SECRET_ACCESS_KEY: 'secret',
+    };
+    expect(resolveStorageProvider(env)).toBe('replit');
+    expect(resolveStorageProvider({ ...env, OBJECT_STORAGE_PROVIDER: 's3' })).toBe('s3');
+  });
+
   it('rejects an unknown provider name', () => {
     expect(() => resolveStorageProvider({ OBJECT_STORAGE_PROVIDER: 'gcs' })).toThrow(
       /OBJECT_STORAGE_PROVIDER must be one of/,
     );
+  });
+
+  it('treats an unknown provider as not configured and logs the name once, never the value', () => {
+    resetStorageAdapterForTests();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const env = { OBJECT_STORAGE_PROVIDER: 'hunter2-value', PRIVATE_OBJECT_DIR: '/bucket/private' };
+      expect(isObjectStorageConfigured(env)).toBe(false);
+      expect(isObjectStorageConfigured(env)).toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const logged = String(warn.mock.calls[0][0]);
+      expect(logged).toContain('OBJECT_STORAGE_PROVIDER');
+      expect(logged).not.toContain('hunter2-value');
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('does not treat NODE_ENV=test as an implicit local backend', () => {
@@ -144,6 +173,67 @@ describe('LocalDiskStorage', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it('refuses keys that resolve to the root itself', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'qvo-storage-'));
+    try {
+      const adapter = new LocalDiskStorage(root);
+      for (const key of ['.', './', '/objects/.', '/local/']) {
+        await expect(adapter.exists(key)).rejects.toThrow(/Invalid object key/);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses symlinks under the root on every operation', async () => {
+    const base = mkdtempSync(path.join(os.tmpdir(), 'qvo-storage-'));
+    const root = path.join(base, 'root');
+    const outside = path.join(base, 'outside');
+    try {
+      mkdirSync(root);
+      mkdirSync(outside);
+      writeFileSync(path.join(outside, 'secret'), 'secret');
+      symlinkSync(outside, path.join(root, 'linked-dir'));
+      symlinkSync(path.join(outside, 'secret'), path.join(root, 'linked-file'));
+      const adapter = new LocalDiskStorage(root);
+
+      for (const key of ['linked-dir/secret', 'linked-file']) {
+        await expect(adapter.get(key)).rejects.toThrow(/Invalid object key/);
+        await expect(adapter.getMetadata(key)).rejects.toThrow(/Invalid object key/);
+        await expect(adapter.exists(key)).rejects.toThrow(/Invalid object key/);
+        await expect(adapter.createReadStream(key)).rejects.toThrow(/Invalid object key/);
+        await expect(adapter.delete(key)).rejects.toThrow(/Invalid object key/);
+      }
+      await expect(adapter.put('linked-dir/new', Buffer.from('x'))).rejects.toThrow(/Invalid object key/);
+      await expect(adapter.put('linked-file', Buffer.from('x'))).rejects.toThrow(/Invalid object key/);
+      expect(readdirSync(outside)).toEqual(['secret']);
+      expect(await readFile(path.join(outside, 'secret'), 'utf8')).toBe('secret');
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('works when the root itself is reached through a symlink', async () => {
+    const base = mkdtempSync(path.join(os.tmpdir(), 'qvo-storage-'));
+    try {
+      mkdirSync(path.join(base, 'real'));
+      symlinkSync(path.join(base, 'real'), path.join(base, 'alias'));
+      const adapter = new LocalDiskStorage(path.join(base, 'alias'));
+      await adapter.put('uploads/a', Buffer.from('ok'));
+      expect(await adapter.get('uploads/a')).toEqual(Buffer.from('ok'));
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('does not treat a sibling of the root as inside it when normalizing file URLs', () => {
+    const adapter = new LocalDiskStorage('/tmp/qvo-root');
+    expect(adapter.normalizeObjectPath('file:///tmp/qvo-root-sibling/uploads/a')).toBe(
+      'file:///tmp/qvo-root-sibling/uploads/a',
+    );
+    expect(adapter.normalizeObjectPath('file:///tmp/qvo-root/uploads/a')).toBe('/objects/uploads/a');
   });
 
   it('normalizes local-storage signed upload URLs to /objects/ paths', async () => {
@@ -229,6 +319,172 @@ describe('createStorageAdapter / getStorageAdapter', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('ReplitSidecarStorage (mocked client)', () => {
+  function replitAdapter(privateDir: string) {
+    const fileMock = {
+      save: vi.fn().mockResolvedValue(undefined),
+      download: vi.fn().mockResolvedValue([Buffer.from('ok')]),
+      exists: vi.fn().mockResolvedValue([true]),
+      setMetadata: vi.fn().mockResolvedValue(undefined),
+    };
+    const file = vi.fn(() => fileMock);
+    const bucket = vi.fn(() => ({ file }));
+    const adapter = new ReplitSidecarStorage({ PRIVATE_OBJECT_DIR: privateDir }, { bucket } as never);
+    return { adapter, bucket, file, fileMock };
+  }
+
+  it.each(['bucket/private', '/bucket/private', 'bucket/private/'])(
+    'round-trips a put path with PRIVATE_OBJECT_DIR=%s',
+    async (privateDir) => {
+      const { adapter, bucket, file } = replitAdapter(privateDir);
+      const stored = await adapter.put(storageKeys.upload('u1'), Buffer.from('ok'));
+      expect(stored).toBe('/bucket/private/uploads/u1');
+      await adapter.get(stored);
+      await adapter.get('bucket/private/uploads/u1');
+      await adapter.get('/objects/uploads/u1');
+      for (const call of [...bucket.mock.calls]) expect(call).toEqual(['bucket']);
+      for (const call of [...file.mock.calls]) expect(call).toEqual(['private/uploads/u1']);
+    },
+  );
+
+  it('only treats keys under the exact private dir as absolute', async () => {
+    const { adapter, file } = replitAdapter('bucket/private');
+    await adapter.get('bucket/private-sibling/a');
+    expect(file).toHaveBeenCalledWith('private/bucket/private-sibling/a');
+  });
+
+  it('normalizes a signed URL when PRIVATE_OBJECT_DIR has no leading slash', () => {
+    const { adapter } = replitAdapter('bucket/private');
+    expect(
+      adapter.normalizeObjectPath('https://storage.googleapis.com/bucket/private/uploads/u1?sig=x'),
+    ).toBe('/objects/uploads/u1');
+  });
+
+  it('refuses keys that resolve to the bucket or private-dir root', async () => {
+    const { adapter } = replitAdapter('/bucket/private');
+    for (const key of ['/objects/', '/bucket/', '']) {
+      await expect(adapter.exists(key)).rejects.toThrow(/Invalid object key/);
+    }
+  });
+
+  it('sets the ACL only for canonical upload paths', async () => {
+    const { adapter, fileMock } = replitAdapter('/bucket/private');
+    const policy = { owner: 'tenant:t1', visibility: 'private' as const };
+    for (const raw of ['/bucket/private/uploads/u1', 'uploads/u1', '/objects/recordings/t1/CA1']) {
+      await expect(adapter.trySetAclPolicy(raw, policy)).rejects.toBeInstanceOf(InvalidObjectPathError);
+    }
+    expect(fileMock.setMetadata).not.toHaveBeenCalled();
+    await expect(adapter.trySetAclPolicy('/objects/uploads/u1', policy)).resolves.toBe(
+      '/objects/uploads/u1',
+    );
+    expect(fileMock.setMetadata).toHaveBeenCalledTimes(1);
+
+    fileMock.exists.mockResolvedValue([false]);
+    await expect(adapter.trySetAclPolicy('/objects/uploads/u2', policy)).rejects.toBeInstanceOf(
+      ObjectNotFoundError,
+    );
+  });
+});
+
+describe('ObjectStorageService path validation and streaming', () => {
+  const policy = { owner: 'tenant:t1', visibility: 'private' as const };
+
+  it('accepts only existing /objects/uploads/<id> paths on every non-Replit adapter', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'qvo-storage-'));
+    try {
+      const svc = new ObjectStorageService(new LocalDiskStorage(root));
+      await svc.uploadPrivateObject(storageKeys.upload('u1'), Buffer.from('x'), 'image/png');
+
+      await expect(svc.trySetObjectEntityAclPolicy('/objects/uploads/u1', policy)).resolves.toBe(
+        '/objects/uploads/u1',
+      );
+      await expect(
+        svc.trySetObjectEntityAclPolicy(`${LOCAL_STORAGE_URL_SCHEME}local/uploads/u1`, policy),
+      ).resolves.toBe('/objects/uploads/u1');
+      await expect(svc.trySetObjectEntityAclPolicy('/objects/uploads/missing', policy)).rejects.toBeInstanceOf(
+        ObjectNotFoundError,
+      );
+      for (const raw of [
+        '/local/uploads/u1',
+        'uploads/u1',
+        '/objects/recordings/t1/CA1',
+        '/objects/uploads/',
+        '/objects/uploads/../../secret',
+        '/objects/uploads/a/b',
+        'file://[',
+      ]) {
+        await expect(svc.trySetObjectEntityAclPolicy(raw, policy)).rejects.toBeInstanceOf(
+          InvalidObjectPathError,
+        );
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('checks existence through the S3 adapter and rejects malformed URLs', async () => {
+    const send = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('missing'), { name: 'NotFound', $metadata: { httpStatusCode: 404 } }));
+    const svc = new ObjectStorageService(
+      createS3StorageAdapter(
+        { S3_BUCKET: 'qvo-objects', S3_ACCESS_KEY_ID: 'id', S3_SECRET_ACCESS_KEY: 'secret' },
+        { send } as never,
+      ),
+    );
+    await expect(svc.trySetObjectEntityAclPolicy('/objects/uploads/u1', policy)).rejects.toBeInstanceOf(
+      ObjectNotFoundError,
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+    await expect(svc.trySetObjectEntityAclPolicy('https://x/%zz', policy)).rejects.toBeInstanceOf(
+      InvalidObjectPathError,
+    );
+    await expect(svc.trySetObjectEntityAclPolicy('/qvo-objects/uploads/u1', policy)).rejects.toBeInstanceOf(
+      InvalidObjectPathError,
+    );
+  });
+
+  it('getObjectEntityFile serves only /objects/ paths', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'qvo-storage-'));
+    try {
+      const svc = new ObjectStorageService(new LocalDiskStorage(root));
+      const stored = await svc.uploadPrivateObject(storageKeys.upload('u1'), Buffer.from('x'), 'image/png');
+      await expect(svc.getObjectEntityFile(stored)).rejects.toBeInstanceOf(ObjectNotFoundError);
+      await expect(svc.getObjectEntityFile('/objects/uploads/u1')).resolves.toBeTruthy();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  async function streamedContentType(storedType: string, fallbackContentType?: string) {
+    const adapter = {
+      provider: 'local' as const,
+      exists: async () => true,
+      getMetadata: async () => ({ contentType: storedType, size: 1 }),
+      createReadStream: async () => Readable.from([Buffer.from('x')]),
+    };
+    const headers: Record<string, string> = {};
+    const res = Object.assign(new PassThrough(), {
+      setHeader(name: string, value: string) {
+        headers[name] = value;
+      },
+    });
+    res.resume();
+    await new ObjectStorageService(adapter as never).streamPrivateObject('/objects/uploads/u1', res as never, {
+      fallbackContentType,
+    });
+    return headers['Content-Type'];
+  }
+
+  it('uses fallbackContentType only when storage has no specific type', async () => {
+    expect(await streamedContentType('application/octet-stream', 'image/jpeg')).toBe('image/jpeg');
+    expect(await streamedContentType('binary/octet-stream', 'image/jpeg')).toBe('image/jpeg');
+    expect(await streamedContentType('', 'image/jpeg')).toBe('image/jpeg');
+    expect(await streamedContentType('image/png', 'image/jpeg')).toBe('image/png');
+    expect(await streamedContentType('application/octet-stream')).toBe('application/octet-stream');
   });
 });
 
