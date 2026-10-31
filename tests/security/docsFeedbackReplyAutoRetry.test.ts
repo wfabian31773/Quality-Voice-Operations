@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readAdminUiSource } from './_adminUiSource';
 
 // ---- Static contract tests --------------------------------------------------
 const schedulerFile = readFileSync(
@@ -527,10 +528,7 @@ describe('runDocsFeedbackReplyRetryCycle — manual-retry coexistence', () => {
 // attempts or whether the failure is still fresh.
 
 describe('admin inbox surfaces auto-retry counters', () => {
-  const platformAdminFile = readFileSync(
-    join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
-    'utf8',
-  );
+  const platformAdminFile = readAdminUiSource();
 
   it('GET /docs/feedback/comments returns last_reply_retry_count + last_reply_last_retry_at', () => {
     // The LATERAL join must pull retry_count and last_retry_at off the

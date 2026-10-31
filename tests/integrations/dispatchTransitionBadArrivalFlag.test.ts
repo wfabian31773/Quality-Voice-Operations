@@ -105,6 +105,36 @@ beforeEach(() => {
   queryMock.mockReset();
 });
 
+/**
+ * SQL-routed stub so fire-and-forget helpers (completion-photo email,
+ * flagBadArrivalIfNeeded) cannot steal each other's mockResolvedValueOnce
+ * slots when they race after the transition response.
+ */
+function stubTransitionQueries(opts: {
+  jobId: string;
+  currentStatus?: string;
+  nextStatus?: string;
+  approach?: { closest_approach_m: number | null; threshold_m: number } | null;
+  exceptionId?: string;
+}): void {
+  queryMock.mockImplementation(async (sql: string) => {
+    const s = String(sql);
+    if (/6371000 \* 2 \* ASIN/.test(s)) {
+      return { rows: opts.approach ? [opts.approach] : [] };
+    }
+    if (/INSERT INTO dispatch_job_exceptions/.test(s)) {
+      return { rows: [{ id: opts.exceptionId ?? 'exc-1' }] };
+    }
+    if (/SELECT id, status FROM dispatch_jobs/.test(s)) {
+      return { rows: [{ id: opts.jobId, status: opts.currentStatus ?? 'in_progress' }] };
+    }
+    if (/UPDATE dispatch_jobs/.test(s)) {
+      return { rows: [{ id: opts.jobId, status: opts.nextStatus ?? 'completed' }] };
+    }
+    return { rows: [] };
+  });
+}
+
 async function buildApp(): Promise<express.Express> {
   const app = express();
   app.use(express.json());
@@ -127,33 +157,11 @@ async function flushAsync(): Promise<void> {
 
 describe('POST /dispatch/jobs/:id/transition — bad-arrival auto-flag', () => {
   it('creates an `other` exception + fires notifications when closest approach exceeds 250 m on first completion', async () => {
-    // 1) lookup existing job  → in_progress
-    queryMock.mockResolvedValueOnce({
-      rows: [{ id: 'job-far', status: 'in_progress' }],
+    stubTransitionQueries({
+      jobId: 'job-far',
+      approach: { closest_approach_m: 612.7, threshold_m: 250 },
+      exceptionId: 'exc-1',
     });
-    // 2) UPDATE dispatch_jobs → completed
-    queryMock.mockResolvedValueOnce({
-      rows: [{ id: 'job-far', status: 'completed' }],
-    });
-    // 3) INSERT dispatch_job_events (status_change)
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    // 4) fireNotifications template lookup for 'completed' trigger — none
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    // 5) clear active_job_id on dispatch_resource_locations
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    // 6) flagBadArrivalIfNeeded — closest-approach + threshold SELECT
-    //    (threshold is now per-tenant, joined via subquery in the same
-    //    round-trip; default 250 returned here to match the historical
-    //    constant.)
-    queryMock.mockResolvedValueOnce({
-      rows: [{ closest_approach_m: 612.7, threshold_m: 250 }],
-    });
-    // 7) INSERT dispatch_job_exceptions
-    queryMock.mockResolvedValueOnce({ rows: [{ id: 'exc-1' }] });
-    // 8) INSERT dispatch_job_events (exception_reported)
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    // 9) fireNotifications template lookup for 'exception' trigger — none
-    queryMock.mockResolvedValueOnce({ rows: [] });
 
     const app = await buildApp();
     const res = await request(app)
@@ -376,21 +384,11 @@ describe('POST /dispatch/jobs/:id/transition — bad-arrival auto-flag', () => {
     // exceeds the threshold and must flag with the tenant value
     // visible in both the exception reason and the event metadata —
     // dispatchers need the actual threshold to make sense of the alert.
-    queryMock.mockResolvedValueOnce({
-      rows: [{ id: 'job-urban', status: 'in_progress' }],
+    stubTransitionQueries({
+      jobId: 'job-urban',
+      approach: { closest_approach_m: 180.0, threshold_m: 100 },
+      exceptionId: 'exc-urban',
     });
-    queryMock.mockResolvedValueOnce({
-      rows: [{ id: 'job-urban', status: 'completed' }],
-    });
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    queryMock.mockResolvedValueOnce({
-      rows: [{ closest_approach_m: 180.0, threshold_m: 100 }],
-    });
-    queryMock.mockResolvedValueOnce({ rows: [{ id: 'exc-urban' }] });
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    queryMock.mockResolvedValueOnce({ rows: [] });
 
     const app = await buildApp();
     const res = await request(app)

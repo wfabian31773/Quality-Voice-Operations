@@ -37,13 +37,22 @@ import { runCallEventsRetentionCycle } from '../../platform/billing/CallEventsRe
 
 beforeEach(() => {
   fakePool.query.mockReset();
+  process.env.CALL_EVENTS_PARTITION_PRUNING_ENABLED = 'true';
 });
 
 describe('runCallEventsRetentionCycle', () => {
   it('ensures current+next month partitions, prunes with the configured window, and records the run', async () => {
+    const current = new Date();
+    current.setUTCDate(1);
+    current.setUTCHours(0, 0, 0, 0);
+    const next = new Date(current);
+    next.setUTCMonth(next.getUTCMonth() + 1);
+    const currentName = `call_events_${current.getUTCFullYear()}_${String(current.getUTCMonth() + 1).padStart(2, '0')}`;
+    const nextName = `call_events_${next.getUTCFullYear()}_${String(next.getUTCMonth() + 1).padStart(2, '0')}`;
+
     fakePool.query
-      .mockResolvedValueOnce({ rows: [{ ensure_call_events_partition: 'call_events_2026_04' }] })
-      .mockResolvedValueOnce({ rows: [{ ensure_call_events_partition: 'call_events_2026_05' }] })
+      .mockResolvedValueOnce({ rows: [{ ensure_call_events_partition: currentName }] })
+      .mockResolvedValueOnce({ rows: [{ ensure_call_events_partition: nextName }] })
       .mockResolvedValueOnce({
         rows: [{ prune_call_events_older_than: ['call_events_2025_01', 'call_events_2025_02'] }],
       })
@@ -51,7 +60,7 @@ describe('runCallEventsRetentionCycle', () => {
 
     const result = await runCallEventsRetentionCycle(90);
 
-    expect(result.ensured).toEqual(['call_events_2026_04', 'call_events_2026_05']);
+    expect(result.ensured).toEqual([currentName, nextName]);
     expect(result.dropped).toEqual(['call_events_2025_01', 'call_events_2025_02']);
 
     expect(fakePool.query).toHaveBeenCalledTimes(4);
@@ -91,7 +100,7 @@ describe('runCallEventsRetentionCycle', () => {
     ];
     expect(status).toBe('success');
     expect(retainDays).toBe(90);
-    expect(ensured).toEqual(['call_events_2026_04', 'call_events_2026_05']);
+    expect(ensured).toEqual([currentName, nextName]);
     expect(dropped).toEqual(['call_events_2025_01', 'call_events_2025_02']);
     expect(errorMessage).toBeNull();
   });

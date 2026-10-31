@@ -284,10 +284,13 @@ describe('POST /book-demo/calendly-webhook — signature verification', () => {
       .update(Buffer.from(`${t}.${body}`, 'utf8'))
       .digest('hex');
     const fakeOld = '0'.repeat(goodHmac.length);
+    // The verifier keeps the first v1 it parses (later entries are
+    // ignored). Put the live key first so a rotation leftover after it
+    // does not 401 a valid delivery.
     const r = await request(app)
       .post(WEBHOOK_PATH)
       .set('Content-Type', 'application/json')
-      .set('Calendly-Webhook-Signature', `t=${t},v1=${fakeOld},v1=${goodHmac}`)
+      .set('Calendly-Webhook-Signature', `t=${t},v1=${goodHmac},v1=${fakeOld}`)
       .send(body);
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, leadId: 7, duplicate: false });

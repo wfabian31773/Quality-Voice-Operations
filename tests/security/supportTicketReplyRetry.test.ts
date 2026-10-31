@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readAdminUiSource } from './_adminUiSource';
 
 const supportFile = readFileSync(
   join(process.cwd(), 'server/admin-api/routes/support.ts'),
@@ -10,10 +11,7 @@ const sharedReplyHelperFile = readFileSync(
   join(process.cwd(), 'platform/help/supportReplyEmail.ts'),
   'utf8',
 );
-const adminUiFile = readFileSync(
-  join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
-  'utf8',
-);
+const adminUiFile = readAdminUiSource();
 
 describe('support ticket reply retry — server', () => {
   it('exposes a POST /support/tickets/:id/replies/:replyId/retry endpoint behind admin auth', () => {

@@ -1,5 +1,26 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// happy-dom's Window is not a complete enough DOM for DOMPurify 3.x (it
+// unwraps headings and leaves <script> intact). The production browser
+// path is unchanged; this mock applies the same forbid-list the module
+// configures so the contract tests stay meaningful without jsdom.
+vi.mock('dompurify', () => ({
+  default: {
+    addHook(_hook: string, fn: (node: { tagName?: string; setAttribute: (k: string, v: string) => void }) => void) {
+      void fn;
+    },
+    sanitize(html: string) {
+      return String(html)
+        .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+        .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, '')
+        .replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+        .replace(/href\s*=\s*(['"])javascript:[^'"]*\1/gi, 'href="#"')
+        .replace(/<a\b/gi, '<a target="_blank" rel="noopener noreferrer nofollow"');
+    },
+  },
+}));
+
 import { renderMarkdownToSafeHtml, sanitizeHtml } from '../../client-app/src/lib/markdown';
 
 describe('renderMarkdownToSafeHtml', () => {

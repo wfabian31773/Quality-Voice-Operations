@@ -26,6 +26,12 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { randomUUID } from 'crypto';
 
+const dbUrl =
+  process.env.DATABASE_URL
+  || process.env.DATABASE_URL_PRIVILEGED
+  || process.env.PLATFORM_DB_POOL_URL
+  || '';
+
 // Stub only the cross-tenant token-health fan-out. The route gracefully
 // degrades when this throws, so returning [] keeps the response shape
 // intact while letting the real SQL for connectors / summary /
@@ -177,7 +183,7 @@ async function cleanup() {
   });
 }
 
-describe('GET /platform/connector-health (end-to-end)', () => {
+describe.skipIf(!dbUrl)('GET /platform/connector-health (end-to-end)', () => {
   beforeAll(async () => {
     process.env.ADMIN_JWT_SECRET =
       process.env.ADMIN_JWT_SECRET ?? 'qvo-connector-health-get-e2e-secret';

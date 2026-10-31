@@ -18,6 +18,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
+import { readyI18n, WithI18n } from './_withI18n';
 
 void React;
 
@@ -119,7 +120,8 @@ interface ApiHandlers {
 
 let handlers: ApiHandlers = {};
 
-beforeEach(() => {
+beforeEach(async () => {
+  await readyI18n(['common', 'tenant']);
   localStorage.clear();
   handlers = {
     '/tenants/me': () => ({
@@ -167,9 +169,11 @@ function renderPage(node: React.ReactElement) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>{node}</MemoryRouter>
-    </QueryClientProvider>,
+    <WithI18n>
+      <QueryClientProvider client={client}>
+        <MemoryRouter>{node}</MemoryRouter>
+      </QueryClientProvider>
+    </WithI18n>,
   );
 }
 
@@ -329,12 +333,14 @@ describe('cost screens render the tenant currency symbol (task #634)', () => {
     const callsMod = await import('../../client-app/src/pages/Calls');
     const { CallDetailDrawer } = callsMod;
 
-    const { container } = renderPage(
+    renderPage(
       <CallDetailDrawer callId="call-1" onClose={() => {}} />,
     );
 
     await waitFor(() => {
-      const txt = normalize(container.textContent ?? '');
+      // CallDetailDrawer portals into #overlay-root on document.body,
+      // so RTL's render container does not include the cost rows.
+      const txt = normalize(document.body.textContent ?? '');
       // STT 200c -> €2.00, Total 1234c -> €12.34
       expect(txt).toMatch(/€\s*2[.,]00/);
       expect(txt).toMatch(/€\s*12[.,]34/);

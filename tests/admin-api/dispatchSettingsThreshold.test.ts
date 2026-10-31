@@ -139,6 +139,9 @@ function mockReads({
     if (/dispatch_sms_segment_limit/.test(sql)) {
       return Promise.resolve({ rows: smsLimit === undefined ? [] : [{ n: smsLimit }] });
     }
+    if (/dispatch_completion_photo_email_enabled/.test(sql)) {
+      return Promise.resolve({ rows: [{ enabled: true }] });
+    }
     return Promise.resolve({ rows: [] });
   });
 }
@@ -169,6 +172,7 @@ describe('GET /dispatch/settings', () => {
       sms_segment_limit: null,
       sms_segment_limit_min: 1,
       sms_segment_limit_max: 10,
+      completion_photo_email_enabled: true,
     });
 
     const sqlByCall = queryMock.mock.calls.map((c) => String(c[0]));
@@ -236,6 +240,7 @@ describe('PUT /dispatch/settings', () => {
       sms_segment_limit: null,
       sms_segment_limit_min: 1,
       sms_segment_limit_max: 10,
+      completion_photo_email_enabled: true,
     });
 
     const updateSql = String(queryMock.mock.calls[0][0]);

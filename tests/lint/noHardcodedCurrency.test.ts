@@ -31,6 +31,11 @@ const ALLOWED_FILES: ReadonlySet<string> = new Set([
   // --- Default-fallback constants ---
   'client-app/src/hooks/useTenantCurrency.ts',
   'client-app/src/lib/formatCurrency.ts',
+  'client-app/src/lib/displayCurrency.ts',
+  // Tenant billing page falls back to USD when Stripe omits a currency.
+  'client-app/src/pages/Billing.tsx',
+  // Twilio PriceUnit default when the carrier omits the ISO code.
+  'server/voice-gateway/routes/twilio.ts',
   // --- BillingEstimator optional prop default ---
   'client-app/src/components/BillingEstimator.tsx',
   // --- Platform-aggregate (cross-tenant) USD figures, by design ---

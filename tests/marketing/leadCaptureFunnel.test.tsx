@@ -91,7 +91,9 @@ interface CapturedFetch {
 let fetchCalls: CapturedFetch[] = [];
 let fetchHandler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-beforeEach(() => {
+beforeEach(async () => {
+  const { readyI18n } = await import('../components/_withI18n');
+  await readyI18n(['common', 'marketing']);
   analyticsCalls.pageViews = [];
   analyticsCalls.ctaClicks = [];
   analyticsCalls.conversionEvents = [];
@@ -537,13 +539,13 @@ describe('Marketing conversion funnel: Live Demo entry CTA', () => {
       />,
     );
 
-    // The bottom CTA's user-visible button text is "Try the Live Demo" — a
-    // copy variant of the hero's "Try Live Demo" — but both fire the same
-    // canonical CTA constant so funnel reports group them together.
+    // Hero and bottom CTAs now share the "Try Live Demo" label (the
+    // older "Try the Live Demo" variant was dropped). Both fire the
+    // same canonical CTA constant so funnel reports group them together.
     const links = screen.getAllByRole('link', {
-      name: /try the live demo/i,
+      name: /try( the)? live demo/i,
     }) as HTMLAnchorElement[];
-    const bottomLink = links.find((a) => a.getAttribute('href') === '/demo');
+    const bottomLink = [...links].reverse().find((a) => a.getAttribute('href') === '/demo');
     expect(
       bottomLink,
       'Landing bottom CTA should expose a Try the Live Demo link pointing at /demo',

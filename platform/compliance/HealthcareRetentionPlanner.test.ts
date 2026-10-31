@@ -48,7 +48,10 @@ describe('healthcare retention dry-run planner', () => {
 
   it('uses the current clock and treats absent count rows as zero', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
-    const result = await buildHealthcareRetentionDryRun({ query }, { policy, evidence });
+    const result = await buildHealthcareRetentionDryRun(
+      { query },
+      { policy, evidence, now: new Date('2026-07-12T20:00:00.000Z') },
+    );
     expect(result.counts.call_sessions).toBe(0);
   });
 });
