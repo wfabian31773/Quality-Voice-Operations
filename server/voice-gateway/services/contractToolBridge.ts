@@ -33,10 +33,12 @@
  *   For a write that timed out on this call, the stop result keeps the same
  *   "can't confirm yet" wording instead of "could not complete it".
  *   SLOT_MISSING is an ask with its own ceiling (the contract's exit), so it
- *   doesn't count. Neither does an action rejecting a handle the model guessed
- *   (Oct 31 test call: one parallel burst of "staff-2" stopped availability for
- *   the whole call): nothing is broken, the error says what to send, and the
- *   rate limit below still bounds a model that keeps guessing;
+ *   doesn't count. Neither do a tool's first GUESS_FAILURES_EXCUSED rejections
+ *   of a handle the model guessed (Oct 31 test call: one parallel burst of
+ *   "staff-2" stopped availability for the whole call): nothing is broken and
+ *   the error says what to send. Past those a guess counts like any failure, so
+ *   a model that keeps guessing is stopped on its own call, not left to run down
+ *   the rate limit below, which every live call on the tenant shares;
  * - the per-tenant tool rate limit (unifiedToolRegistry.checkRateLimit).
  *
  * A call-stable read (binding.cacheable, e.g. a catalog) asked again on the
@@ -73,6 +75,9 @@ const LANGUAGE_TOOL = 'record_language_change';
 
 /** The per-attempt timeout legacy tools get (RetryOrchestrator's withTimeout, DEFAULT_RETRY_CONFIG.timeoutMs). */
 export const CONTRACT_TOOL_TIMEOUT_MS = DEFAULT_RETRY_CONFIG.timeoutMs;
+
+/** Rejected guesses per tool per call that don't count toward the stop: one parallel burst (the Oct 31 call's was 3). */
+export const GUESS_FAILURES_EXCUSED = 3;
 
 /** A read that timed out: nothing changed, so another try is fine. */
 export const READ_TIMED_OUT: Phrase = {
@@ -270,6 +275,8 @@ export class ContractToolBridge {
   private readonly idHandles = new CallHandles();
   /** Tools with a prepare or write that timed out on this call (it may still have landed). */
   private readonly uncertainWrites = new Map<string, Exclude<TimeoutClass, 'read'>>();
+  /** Tool → the rejected guesses excused from the stop so far on this call. */
+  private readonly excusedGuesses = new Map<string, number>();
   /**
    * This call's ok results of call-stable reads (binding.cacheable), by action,
    * the call's language and normalized arguments. One bridge per call session, so nothing here is
@@ -374,7 +381,8 @@ export class ContractToolBridge {
     const status: ContractToolRun['status'] = timedOut ? 'timeout' : countsAsFailure(result) ? 'failed' : 'success';
 
     const guessed = rejectedGuess(result, guesses);
-    if (countsAsFailure(result) && !guessed && guard.recordFailure(callId, toolName) >= guard.threshold) {
+    const excused = guessed && this.excuseGuess(toolName);
+    if (countsAsFailure(result) && !excused && guard.recordFailure(callId, toolName) >= guard.threshold) {
       return this.finish(action, this.stopResult(guard, toolName), status);
     }
 
@@ -396,6 +404,14 @@ export class ContractToolBridge {
       return this.finish(action, say ? { ...view, say } : view, status);
     }
     return this.finish(action, result, status);
+  }
+
+  /** Spends one of the tool's excused guesses on this call; false once they are gone. */
+  private excuseGuess(toolName: string): boolean {
+    const used = this.excusedGuesses.get(toolName) ?? 0;
+    if (used >= GUESS_FAILURES_EXCUSED) return false;
+    this.excusedGuesses.set(toolName, used + 1);
+    return true;
   }
 
   /** The model's view of a result (internal ids swapped for handles or dropped), plus how the run ended. */

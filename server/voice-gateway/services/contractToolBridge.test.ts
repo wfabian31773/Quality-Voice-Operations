@@ -15,7 +15,7 @@ import { resolveStaffRef } from '../../../platform/actions/scheduling/staffRefs'
 import { DEFAULT_RETRY_CONFIG } from '../../../platform/tools/RetryOrchestrator';
 import { TOOL_STOP_THRESHOLD, ToolStopGuard } from '../../../platform/tools/ToolStopGuard';
 import { CallInvariants } from './callInvariants';
-import { CONTRACT_TOOL_TIMEOUT_MS, ContractToolBridge, createContractToolBridge, READ_TIMED_OUT, type ContractActionRunner } from './contractToolBridge';
+import { CONTRACT_TOOL_TIMEOUT_MS, ContractToolBridge, createContractToolBridge, GUESS_FAILURES_EXCUSED, READ_TIMED_OUT, type ContractActionRunner } from './contractToolBridge';
 
 const TEMPLATE = BARBERSHOP_TEMPLATE_V1;
 const composed = compose(TEMPLATE, undefined, { businessName: 'Sharp Line Barbers' }, { language: 'en' });
@@ -433,6 +433,40 @@ describe('contract tool bridge: timeout, repeated-failure stop, rate limit', () 
       expect(guard.failureCount('cs-count', tool)).toBe(1);
       await b.runTool(tool, { staffId: 'staff-9' });
       expect(guard.failureCount('cs-count', tool)).toBe(2);
+    });
+
+    it('a model that keeps guessing is stopped on its own call, whatever it guesses, without touching other tools or calls', async () => {
+      const guard = new ToolStopGuard();
+      const { runner, inputs } = shop();
+      // The tenant-wide limit never steps in here: the stop alone has to end it.
+      const b = bridge(runner, { callId: 'cs-guessing', stopGuard: guard, checkRateLimit: () => true });
+      const tool = 'scheduling_check_availability';
+      const untilStop = GUESS_FAILURES_EXCUSED + TOOL_STOP_THRESHOLD;
+
+      for (let i = 1; i < untilStop; i++) {
+        // Numbered clear of the handles the errors' alternatives issue, so each one stays a guess.
+        const out = parse(await b.runTool(tool, { staffId: `staff-${50 + i}` }));
+        expect(out.error.code).toBe('NOT_FOUND');
+        expect(out.error.message).toMatch(/never came from a tool result/);
+        expect(guard.failureCount('cs-guessing', tool)).toBe(Math.max(0, i - GUESS_FAILURES_EXCUSED));
+      }
+      expect(parse(await b.runTool(tool, { staffId: 'staff-99' }))).toMatchObject({ code: 'TOOL_STOPPED', tool, failedAttempts: TOOL_STOP_THRESHOLD });
+      expect(inputs).toHaveLength(untilStop);
+
+      // Stopped for the rest of the call: nothing more reaches the action.
+      expect(parse(await b.runTool(tool, { staffId: 'staff-100' }))).toMatchObject({ code: 'TOOL_STOPPED' });
+      expect(inputs).toHaveLength(untilStop);
+
+      // Per tool: another tool has its own excused guesses.
+      const other = 'scheduling_book_prepare';
+      expect(parse(await b.runTool(other, { staffId: 'staff-101' })).error.code).toBe('NOT_FOUND');
+      expect(guard.failureCount('cs-guessing', other)).toBe(0);
+
+      // Per call: another call on the tenant keeps its availability and its own excused guesses.
+      const elsewhere = bridge(shop().runner, { callId: 'cs-elsewhere', stopGuard: guard, checkRateLimit: () => true });
+      expect(parse(await elsewhere.runTool(tool, { staffId: 'staff-2' })).error.code).toBe('NOT_FOUND');
+      expect(guard.failureCount('cs-elsewhere', tool)).toBe(0);
+      expect(parse(await elsewhere.runTool(tool, { serviceIds: ['service-haircut'] })).ok).toBe(true);
     });
   });
 
