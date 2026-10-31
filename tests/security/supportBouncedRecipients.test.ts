@@ -18,6 +18,10 @@ const supportFile = readFileSync(
   'utf8',
 );
 const adminUiFile = readAdminUiSource();
+const supportRouteFile = readFileSync(
+  join(process.cwd(), 'client-app/src/pages/admin/dashboard/routes/SupportRoute.tsx'),
+  'utf8',
+);
 
 describe('/support/replies/bounced-recipients — endpoint contract', () => {
   it('mounts the new GET endpoint guarded by requireAuth + requirePlatformAdmin', () => {
@@ -415,6 +419,9 @@ describe('PlatformAdmin dashboard — bounced recipient counter card', () => {
     expect(adminUiFile).toMatch(/id="bounced-recipients-panel"/);
     expect(adminUiFile).toMatch(
       /navigate\(\s*['"]\/admin\/dashboard\/support#bounced-recipients-panel['"]\s*\)/,
+    );
+    expect(supportRouteFile).toMatch(
+      /getElementById\(\s*['"]bounced-recipients-panel['"]\s*\)\s*\?\.scrollIntoView\(/,
     );
   });
 });

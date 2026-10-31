@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 /**
  * Unit test for BL-044 — `CallEventsRetentionScheduler` cycle wiring.
@@ -35,9 +35,19 @@ vi.mock('../../platform/db', () => ({
 
 import { runCallEventsRetentionCycle } from '../../platform/billing/CallEventsRetentionScheduler';
 
+const originalPruningEnabled = process.env.CALL_EVENTS_PARTITION_PRUNING_ENABLED;
+
 beforeEach(() => {
   fakePool.query.mockReset();
   process.env.CALL_EVENTS_PARTITION_PRUNING_ENABLED = 'true';
+});
+
+afterEach(() => {
+  if (originalPruningEnabled === undefined) {
+    delete process.env.CALL_EVENTS_PARTITION_PRUNING_ENABLED;
+  } else {
+    process.env.CALL_EVENTS_PARTITION_PRUNING_ENABLED = originalPruningEnabled;
+  }
 });
 
 describe('runCallEventsRetentionCycle', () => {

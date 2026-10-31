@@ -266,7 +266,7 @@ describe('POST /book-demo/calendly-webhook — signature verification', () => {
     expect(mocks.notifyBookingConfirmed).not.toHaveBeenCalled();
   });
 
-  it('accepts a signature header that lists multiple v1 values during key rotation', async () => {
+  it('accepts a multi-v1 signature header when the valid v1 is listed first', async () => {
     const { app, mocks } = await buildApp({
       findLeadById: vi.fn(async (id: number) => ({
         id,
@@ -291,6 +291,35 @@ describe('POST /book-demo/calendly-webhook — signature verification', () => {
       .post(WEBHOOK_PATH)
       .set('Content-Type', 'application/json')
       .set('Calendly-Webhook-Signature', `t=${t},v1=${goodHmac},v1=${fakeOld}`)
+      .send(body);
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, leadId: 7, duplicate: false });
+    expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
+  });
+
+  // KNOWN GAP: server/admin-api/routes/contact.ts verifies only the first v1; follow-up needed
+  it.fails('accepts a multi-v1 signature header when an invalid v1 precedes the valid one', async () => {
+    const { app, mocks } = await buildApp({
+      findLeadById: vi.fn(async (id: number) => ({
+        id,
+        email: 'attendee@example.com',
+        payload: {},
+        name: null,
+        company: null,
+      })),
+      attachBookingToLeadById: vi.fn(async (id: number) => ({ leadId: id, duplicate: false })),
+    });
+    const body = buildInviteeCreatedBody({ utmContent: 'lead-7' });
+    const t = Math.floor(Date.now() / 1000);
+    const goodHmac = crypto
+      .createHmac('sha256', TEST_SECRET)
+      .update(Buffer.from(`${t}.${body}`, 'utf8'))
+      .digest('hex');
+    const fakeOld = '0'.repeat(goodHmac.length);
+    const r = await request(app)
+      .post(WEBHOOK_PATH)
+      .set('Content-Type', 'application/json')
+      .set('Calendly-Webhook-Signature', `t=${t},v1=${fakeOld},v1=${goodHmac}`)
       .send(body);
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, leadId: 7, duplicate: false });

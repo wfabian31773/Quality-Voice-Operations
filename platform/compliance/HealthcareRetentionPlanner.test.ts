@@ -47,11 +47,19 @@ describe('healthcare retention dry-run planner', () => {
   });
 
   it('uses the current clock and treats absent count rows as zero', async () => {
-    const query = vi.fn().mockResolvedValue({ rows: [] });
-    const result = await buildHealthcareRetentionDryRun(
-      { query },
-      { policy, evidence, now: new Date('2026-07-12T20:00:00.000Z') },
-    );
-    expect(result.counts.call_sessions).toBe(0);
+    // Pin the default clock inside the policy/evidence validity window; no
+    // `now` is injected so the planner's own `new Date()` path runs.
+    const clock = new Date('2026-07-12T20:00:00.000Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(clock);
+    try {
+      const query = vi.fn().mockResolvedValue({ rows: [] });
+      const result = await buildHealthcareRetentionDryRun({ query }, { policy, evidence });
+      expect(result.counts.call_sessions).toBe(0);
+      // 30-day retention cutoff is derived from the pinned clock.
+      expect(query.mock.calls[0][1][1]).toEqual(new Date(clock.getTime() - 30 * 86_400_000));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
