@@ -117,6 +117,34 @@ describe('CallHandles', () => {
     expect(h.fromModel({ bookingId: 'booking-1', nested: { list: ['booking-1', 'booking-2'] } })).toEqual({ bookingId: booking, nested: { list: [booking, 'booking-2'] } });
   });
 
+  it('a handle the model guessed is never given to a real id later, and later handles stay stable', () => {
+    const h = new CallHandles();
+    const dee = randomUUID();
+    const luis = randomUUID();
+    expect(h.toModel({ staffId: dee }, 'x')).toEqual({ staffId: 'staff-1' });
+
+    expect(h.unissuedIds({ staffId: 'staff-2' })).toEqual(['staff-2']);
+    expect(h.fromModel({ staffId: 'staff-2' })).toEqual({ staffId: 'staff-2' });
+
+    expect(h.toModel({ staffId: luis }, 'x')).toEqual({ staffId: 'staff-3' });
+    expect(h.toModel({ staffId: luis }, 'x')).toEqual({ staffId: 'staff-3' });
+    expect(h.fromModel({ staffId: 'staff-3' })).toEqual({ staffId: luis });
+    expect(h.fromModel({ staffId: 'staff-2' })).toEqual({ staffId: 'staff-2' });
+    expect(h.realFor('staff-2')).toBeUndefined();
+  });
+
+  it('only a never-issued handle in an id field is a guess, not a name, a real id or free text', () => {
+    const h = new CallHandles();
+    h.toModel({ staffId: randomUUID() }, 'x');
+    expect(h.unissuedIds({
+      staffId: 'Dee',
+      serviceIds: ['service-1', 'service-1', 'svc-cut', randomUUID()],
+      nested: { bookingId: 'booking-4' },
+      subject: 'staff-9',
+    })).toEqual(['service-1', 'booking-4']);
+    expect(h.unissuedIds({ staffId: 'staff-1' })).toEqual([]);
+  });
+
   it('keeps the confirmation token and payload hash verbatim', () => {
     const token = randomUUID();
     const out = new CallHandles().toModel({ data: { confirmationToken: token, payloadHash: 'f'.repeat(64) } }, 'tickets.open.prepare');
