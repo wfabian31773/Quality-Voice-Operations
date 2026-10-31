@@ -12,7 +12,9 @@
  * - Shape-based: any other uuid-shaped string, anywhere (a value, or inside a
  *   message), becomes a "ref-N" handle.
  * - An unknown handle the model sends is passed through as is, so it reaches
- *   the action's normal not-found path.
+ *   the action's normal not-found path. One it guessed ("staff-2", never issued)
+ *   is also retired: no real id ever gets that string later in the call, so a
+ *   handle never changes meaning under the model, even with calls in flight.
  */
 
 /** Ids the model never acts on: never shown. */
@@ -49,6 +51,9 @@ const NOT_IDS: ReadonlySet<string> = new Set(['any']);
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
+/** What a handle of any kind looks like. */
+const HANDLE_SHAPED = /^(?:booking|staff|service|ref)-\d+$/;
+
 /** Whether a string contains a uuid. */
 export function containsUuid(text: string): boolean {
   UUID.lastIndex = 0;
@@ -61,14 +66,20 @@ export class CallHandles {
   private readonly handleByReal = new Map<string, string>();
   private readonly realByHandle = new Map<string, string>();
   private readonly counts = new Map<string, number>();
+  /** Handle-shaped strings the model sent before this call issued them: never issued now. */
+  private readonly retired = new Set<string>();
 
   /** The handle for a real id (the same one every time in this call). */
   handleFor(real: string, kind: string): string {
     const known = this.handleByReal.get(real);
     if (known) return known;
-    const n = (this.counts.get(kind) ?? 0) + 1;
+    let n = this.counts.get(kind) ?? 0;
+    let handle: string;
+    do {
+      n += 1;
+      handle = `${kind}-${n}`;
+    } while (this.retired.has(handle));
     this.counts.set(kind, n);
-    const handle = `${kind}-${n}`;
     this.handleByReal.set(real, handle);
     this.realByHandle.set(handle, real);
     return handle;
@@ -87,9 +98,27 @@ export class CallHandles {
     return this.out(value, undefined, undefined, { action, speakable });
   }
 
-  /** The action's view of the model's arguments: every handle this call issued is swapped for its real id. */
+  /**
+   * The action's view of the model's arguments: every handle this call issued
+   * is swapped for its real id, and a handle-shaped string it didn't issue is
+   * left as is and retired.
+   */
   fromModel(args: Record<string, unknown>): Record<string, unknown> {
     return this.in(args) as Record<string, unknown>;
+  }
+
+  /** The handle-shaped values in the arguments' id fields that this call never issued: the model's guesses. */
+  unissuedIds(args: Record<string, unknown>): string[] {
+    return [...new Set(this.guesses(args, undefined))];
+  }
+
+  private guesses(value: unknown, key: string | undefined): string[] {
+    if (Array.isArray(value)) return value.flatMap((item) => this.guesses(item, key));
+    if (value && typeof value === 'object') {
+      return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) => this.guesses(v, k));
+    }
+    const isId = typeof value === 'string' && key !== undefined && KIND_BY_KEY[key] !== undefined;
+    return isId && HANDLE_SHAPED.test(value) && !this.realByHandle.has(value) ? [value] : [];
   }
 
   private out(value: unknown, key: string | undefined, list: string | undefined, opts: { action: string; speakable: ReadonlySet<string> }): unknown {
@@ -116,6 +145,10 @@ export class CallHandles {
     if (value && typeof value === 'object') {
       return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, this.in(v)]));
     }
-    return typeof value === 'string' ? this.realByHandle.get(value) ?? value : value;
+    if (typeof value !== 'string') return value;
+    const real = this.realByHandle.get(value);
+    if (real) return real;
+    if (HANDLE_SHAPED.test(value)) this.retired.add(value);
+    return value;
   }
 }

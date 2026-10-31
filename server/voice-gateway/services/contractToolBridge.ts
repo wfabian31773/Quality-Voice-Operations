@@ -33,7 +33,10 @@
  *   For a write that timed out on this call, the stop result keeps the same
  *   "can't confirm yet" wording instead of "could not complete it".
  *   SLOT_MISSING is an ask with its own ceiling (the contract's exit), so it
- *   doesn't count;
+ *   doesn't count. Neither does an action rejecting a handle the model guessed
+ *   (Oct 31 test call: one parallel burst of "staff-2" stopped availability for
+ *   the whole call): nothing is broken, the error says what to send, and the
+ *   rate limit below still bounds a model that keeps guessing;
  * - the per-tenant tool rate limit (unifiedToolRegistry.checkRateLimit).
  *
  * A call-stable read (binding.cacheable, e.g. a catalog) asked again on the
@@ -132,6 +135,11 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 /** An ask (SLOT_MISSING, with or without its exit) has its own ceiling; every other failure counts toward the stop. */
 function countsAsFailure(result: ActionResult): boolean {
   return !result.ok && result.error.code !== 'SLOT_MISSING';
+}
+
+/** The action turned down a call that named a handle never issued (book.prepare's unknown service is VALIDATION_FAILED). */
+function rejectedGuess(result: ActionResult, guesses: readonly string[]): boolean {
+  return guesses.length > 0 && !result.ok && (result.error.code === 'NOT_FOUND' || result.error.code === 'VALIDATION_FAILED');
 }
 
 /** How one contract tool call ended, for the session's tool bookkeeping. */
@@ -353,6 +361,8 @@ export class ContractToolBridge {
 
     let result: ActionResult;
     let timedOut = false;
+    // Before fromModel, which retires them.
+    const guesses = this.idHandles.unissuedIds(args);
     try {
       // Handles the model holds ("booking-1") go back to the real ids here.
       const input = withoutCallerIdReferences(this.idHandles.fromModel(args), binding.callerIdPaths[action]);
@@ -363,14 +373,17 @@ export class ContractToolBridge {
     }
     const status: ContractToolRun['status'] = timedOut ? 'timeout' : countsAsFailure(result) ? 'failed' : 'success';
 
-    if (countsAsFailure(result) && guard.recordFailure(callId, toolName) >= guard.threshold) {
+    const guessed = rejectedGuess(result, guesses);
+    if (countsAsFailure(result) && !guessed && guard.recordFailure(callId, toolName) >= guard.threshold) {
       return this.finish(action, this.stopResult(guard, toolName), status);
     }
 
     if (!result.ok) {
-      const { error } = result;
+      const error = guessed
+        ? { ...result.error, message: `${result.error.message} ${guesses.join(', ')} never came from a tool result on this call: send only ids a tool result gave you.` }
+        : result.error;
       const asked = error.code === 'SLOT_MISSING' && error.askId && !error.exit ? binding.asks[error.askId]?.[lang] : undefined;
-      return this.finish(action, asked ? { ok: false, error: { ...error, callerSafeMessage: asked } } : result, status);
+      return this.finish(action, { ok: false, error: asked ? { ...error, callerSafeMessage: asked } : error }, status);
     }
 
     const data = asRecord(result.data);

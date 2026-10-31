@@ -11,6 +11,7 @@ import {
   type ActionResult,
 } from '../../../platform/actions';
 import { spokenWeek } from '../../../platform/actions/scheduling/spokenHours';
+import { resolveStaffRef } from '../../../platform/actions/scheduling/staffRefs';
 import { DEFAULT_RETRY_CONFIG } from '../../../platform/tools/RetryOrchestrator';
 import { TOOL_STOP_THRESHOLD, ToolStopGuard } from '../../../platform/tools/ToolStopGuard';
 import { CallInvariants } from './callInvariants';
@@ -346,6 +347,93 @@ describe('contract tool bridge: timeout, repeated-failure stop, rate limit', () 
       expect(parse(await b.runTool('scheduling_book_prepare', {})).code).not.toBe('TOOL_STOPPED');
     }
     expect(guard.failureCount('cs-asks', 'scheduling_book_prepare')).toBe(0);
+  });
+
+  describe('Oct 31 test call: a burst of guessed handles while pricing a second back-to-back booking', () => {
+    const DEE = randomUUID();
+    const LUIS = randomUUID();
+    const MARCUS = randomUUID();
+    const CATALOG = { staff: [{ id: DEE, name: 'Dee' }, { id: LUIS, name: 'Luis' }, { id: MARCUS, name: 'Marcus' }] } as unknown as Parameters<typeof resolveStaffRef>[0];
+    const slot = (staffId: string, start: string) => ({
+      staffId,
+      start,
+      end: new Date(Date.parse(start) + 30 * 60_000).toISOString(),
+      blockedUntil: new Date(Date.parse(start) + 35 * 60_000).toISOString(),
+    });
+    const FIRST_SLOTS = ['2026-10-31T13:00:00.000Z', '2026-10-31T14:00:00.000Z', '2026-10-31T15:00:00.000Z'];
+
+    /** check_availability's staff resolution, with the real resolveStaffRef and its alternatives. */
+    function shop() {
+      const inputs: Record<string, unknown>[] = [];
+      const runner: ContractActionRunner = async (_name, _ctx, raw) => {
+        const input = raw as { staffId?: string; startTime?: string };
+        inputs.push(input);
+        const member = input.staffId ? resolveStaffRef(CATALOG, input.staffId, 'en') : CATALOG.staff[0];
+        if ('ok' in member) return member;
+        // An exact check: the time asked for if it is open, else the next open one. Dee's 13:35 isn't, 13:45 is.
+        if (input.startTime) return actionOk({ slots: [slot(member.id, input.startTime === '2026-10-31T13:35:00.000Z' ? '2026-10-31T13:45:00.000Z' : input.startTime)] });
+        return actionOk({ slots: FIRST_SLOTS.map((start) => slot(member.id, start)) });
+      };
+      return { runner, inputs };
+    }
+
+    it('availability stays up, the error is consistent, and the alternatives\' handle reaches the right barber', async () => {
+      const guard = new ToolStopGuard();
+      const { runner, inputs } = shop();
+      const b = bridge(runner, { callId: 'cs-1031', stopGuard: guard, checkRateLimit: () => true });
+      const tool = 'scheduling_check_availability';
+
+      const open = parse(await b.runTool(tool, { serviceIds: ['service-haircut'] }));
+      expect(open.data.slots.map((s: { staffId: string }) => s.staffId)).toEqual(['staff-1', 'staff-1', 'staff-1']);
+      const [first] = open.data.slots as Array<{ start: string; blockedUntil: string }>;
+
+      // The back-to-back path: Dee again, at the first slot's blockedUntil.
+      const next = parse(await b.runTool(tool, { staffId: 'staff-1', startTime: first.blockedUntil }));
+      expect(inputs.at(-1)).toEqual({ staffId: DEE, startTime: '2026-10-31T13:35:00.000Z' });
+      expect(next.data.slots[0]).toMatchObject({ staffId: 'staff-1', start: '2026-10-31T13:45:00.000Z' });
+
+      // The son with "another barber": three parallel calls with a handle nothing issued.
+      const burst = (await Promise.all(FIRST_SLOTS.map((startTime) => b.runTool(tool, { staffId: 'staff-2', startTime })))).map(parse);
+      expect(guard.failureCount('cs-1031', tool)).toBe(0);
+      const alternatives = [
+        { staffId: 'staff-1', name: 'Dee' },
+        { staffId: 'staff-3', name: 'Luis' },
+        { staffId: 'staff-4', name: 'Marcus' },
+      ];
+      for (const out of burst) {
+        expect(out.code).not.toBe('TOOL_STOPPED');
+        expect(out.error.code).toBe('NOT_FOUND');
+        expect(out.error.message).toMatch(/Unknown staff member: staff-2/);
+        expect(out.error.message).toMatch(/staff-2 never came from a tool result/);
+        // The handle that failed never names someone else in the same breath.
+        expect(out.error.alternatives).toEqual(alternatives);
+      }
+
+      // The same guess later still means nobody: it did not turn into Luis.
+      expect(parse(await b.runTool(tool, { staffId: 'staff-2' })).error.code).toBe('NOT_FOUND');
+      expect(inputs.at(-1)).toEqual({ staffId: 'staff-2' });
+
+      const luis = parse(await b.runTool(tool, { staffId: 'staff-3', startTime: first.start }));
+      expect(inputs.at(-1)).toEqual({ staffId: LUIS, startTime: first.start });
+      expect(luis.ok).toBe(true);
+      expect(luis.data.slots[0]).toMatchObject({ staffId: 'staff-3', start: first.start });
+
+      // Dee's handle is untouched by all of it.
+      await b.runTool(tool, { staffId: 'staff-1', startTime: first.start });
+      expect(inputs.at(-1)).toEqual({ staffId: DEE, startTime: first.start });
+    });
+
+    it('a not-found on a handle this call did issue, or a guess that fails some other way, still counts', async () => {
+      const guard = new ToolStopGuard();
+      const results: ActionResult[] = [actionOk({ staffId: DEE }), actionFail('NOT_FOUND', 'gone'), actionFail('INTERNAL', 'boom')];
+      const b = bridge(async () => results.shift() ?? actionOk({}), { callId: 'cs-count', stopGuard: guard, checkRateLimit: () => true });
+      const tool = 'scheduling_check_availability';
+      await b.runTool(tool, {});
+      await b.runTool(tool, { staffId: 'staff-1' });
+      expect(guard.failureCount('cs-count', tool)).toBe(1);
+      await b.runTool(tool, { staffId: 'staff-9' });
+      expect(guard.failureCount('cs-count', tool)).toBe(2);
+    });
   });
 
   it('a rate-limited tool does not run', async () => {
