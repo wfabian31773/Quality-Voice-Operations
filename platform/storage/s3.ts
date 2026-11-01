@@ -206,9 +206,8 @@ export class S3CompatibleStorage implements StorageAdapter {
       return rawPath;
     }
     const pathname = decodeURIComponent(url.pathname);
-    const endpointPath = this.config.endpoint
-      ? new URL(this.config.endpoint).pathname.replace(/\/+$/, '')
-      : '';
+    const endpoint = this.config.endpoint ? new URL(this.config.endpoint) : undefined;
+    const endpointPath = endpoint ? endpoint.pathname.replace(/\/+$/, '') : '';
     let remainder = pathname;
     if (endpointPath && remainder.startsWith(endpointPath)) {
       remainder = remainder.slice(endpointPath.length);
@@ -217,9 +216,14 @@ export class S3CompatibleStorage implements StorageAdapter {
     // On a virtual-hosted URL the bucket is in the host and the whole path is the
     // key, so a leading segment that matches the bucket name belongs to the key.
     // The SDK can still emit path-style with forcePathStyle off (IP endpoints,
-    // non-DNS bucket names), so check the host rather than only the flag.
+    // non-DNS bucket names, dotted buckets over https), so check the host rather
+    // than only the flag. Path-style stays on the endpoint's own host, even when
+    // that host happens to start with the bucket name.
     const isVirtualHosted =
-      !this.config.forcePathStyle && url.hostname.startsWith(`${this.config.bucket}.`);
+      !this.config.forcePathStyle &&
+      url.hostname.startsWith(`${this.config.bucket}.`) &&
+      url.hostname !== endpoint?.hostname &&
+      !(this.config.bucket.includes('.') && url.protocol === 'https:');
     const bucketPrefix = `${this.config.bucket}/`;
     if (!isVirtualHosted && remainder.startsWith(bucketPrefix)) {
       remainder = remainder.slice(bucketPrefix.length);

@@ -584,7 +584,84 @@ describe('S3CompatibleStorage (real SDK presigner, no network)', () => {
     },
   ]);
 
-  it.each(urlStyles)(
+  // The SDK picks the URL style from the bucket name too, so these pin what it
+  // actually emits with S3_FORCE_PATH_STYLE=false.
+  const bucketNameStyles = [
+    {
+      bucket: 'qvo.objects',
+      prefix: undefined,
+      objectKey: 'uploads/u1',
+      style: 'path-style for a dotted bucket over https on a custom endpoint',
+      env: { S3_FORCE_PATH_STYLE: 'false', S3_ENDPOINT: 'https://qvo.objects.example.com' },
+      host: 'qvo.objects.example.com',
+      pathname: '/qvo.objects/uploads/u1',
+    },
+    {
+      bucket: 'qvo.objects',
+      prefix: 'prod',
+      objectKey: 'prod/uploads/u1',
+      style: 'path-style for a dotted bucket over https on a custom endpoint',
+      env: { S3_FORCE_PATH_STYLE: 'false', S3_ENDPOINT: 'https://qvo.objects.example.com' },
+      host: 'qvo.objects.example.com',
+      pathname: '/qvo.objects/prod/uploads/u1',
+    },
+    {
+      bucket: 'qvo.objects',
+      prefix: undefined,
+      objectKey: 'uploads/u1',
+      style: 'path-style for a dotted bucket over https on an unrelated endpoint',
+      env: { S3_FORCE_PATH_STYLE: 'false', S3_ENDPOINT: 'https://storage.example.com' },
+      host: 'storage.example.com',
+      pathname: '/qvo.objects/uploads/u1',
+    },
+    {
+      bucket: 'qvo.objects',
+      prefix: undefined,
+      objectKey: 'uploads/u1',
+      style: 'path-style for a dotted bucket on AWS',
+      env: { S3_FORCE_PATH_STYLE: 'false' },
+      host: 's3.us-east-1.amazonaws.com',
+      pathname: '/qvo.objects/uploads/u1',
+    },
+    {
+      bucket: 's3.us-east-1',
+      prefix: undefined,
+      objectKey: 'uploads/u1',
+      style: 'path-style for a dotted bucket named like the AWS host',
+      env: { S3_FORCE_PATH_STYLE: 'false' },
+      host: 's3.us-east-1.amazonaws.com',
+      pathname: '/s3.us-east-1/uploads/u1',
+    },
+    {
+      bucket: 'ab',
+      prefix: undefined,
+      objectKey: 'uploads/u1',
+      style: 'path-style for a too-short bucket on a host that starts with its name',
+      env: { S3_FORCE_PATH_STYLE: 'false', S3_ENDPOINT: 'https://ab.example.com' },
+      host: 'ab.example.com',
+      pathname: '/ab/uploads/u1',
+    },
+    {
+      bucket: 'qvo.objects',
+      prefix: undefined,
+      objectKey: 'uploads/u1',
+      style: 'virtual-hosted for a dotted bucket over http',
+      env: { S3_FORCE_PATH_STYLE: 'false', S3_ENDPOINT: 'http://storage.example.com' },
+      host: 'qvo.objects.storage.example.com',
+      pathname: '/uploads/u1',
+    },
+    {
+      bucket: 'uploads',
+      prefix: undefined,
+      objectKey: 'uploads/u1',
+      style: 'virtual-hosted on an endpoint that starts with the bucket name',
+      env: { S3_FORCE_PATH_STYLE: 'false', S3_ENDPOINT: 'https://uploads.example.com' },
+      host: 'uploads.uploads.example.com',
+      pathname: '/uploads/u1',
+    },
+  ];
+
+  it.each([...urlStyles, ...bucketNameStyles])(
     '$style: signed URL registers as an attachment under bucket=$bucket prefix=$prefix',
     async ({ bucket, prefix, objectKey, env, host, pathname }) => {
       const adapter = createS3StorageAdapter({
