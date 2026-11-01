@@ -11,7 +11,11 @@
  *
  * Allow-listed surfaces (intentional and documented in task #1006's
  * audit notes):
- *   - useTenantCurrency.ts / formatCurrency.ts default-fallback constants
+ *   - useTenantCurrency.ts / formatCurrency.ts / displayCurrency.ts
+ *     default-fallback constants
+ *   - Billing.tsx / twilio.ts: only the single USD fallback line listed in
+ *     ALLOWED_USD_FALLBACKS (Stripe / Twilio omitted the currency); anything
+ *     else hardcoded in those files fails
  *   - BillingEstimator's optional `currency` prop default
  *   - PlatformAdmin / AdminAnalytics: platform-aggregate USD figures
  *     across tenants of mixed currencies (intentional design)
@@ -31,6 +35,7 @@ const ALLOWED_FILES: ReadonlySet<string> = new Set([
   // --- Default-fallback constants ---
   'client-app/src/hooks/useTenantCurrency.ts',
   'client-app/src/lib/formatCurrency.ts',
+  'client-app/src/lib/displayCurrency.ts',
   // --- BillingEstimator optional prop default ---
   'client-app/src/components/BillingEstimator.tsx',
   // --- Platform-aggregate (cross-tenant) USD figures, by design ---
@@ -57,6 +62,32 @@ const ALLOWED_FILES: ReadonlySet<string> = new Set([
   'server/admin-api/routes/tenants.ts',
   'server/admin-api/routes/platformAdmin.ts',
 ]);
+
+// Line-level allowances for the 'USD' scan, for files that are otherwise
+// held to the rule. `text` is the whole trimmed source line, and each entry
+// excuses one occurrence, so a copy of the line elsewhere still fails.
+const ALLOWED_USD_FALLBACKS: ReadonlyArray<{ file: string; text: string }> = [
+  // Tenant billing page falls back to USD when Stripe omits a currency.
+  {
+    file: 'client-app/src/pages/Billing.tsx',
+    text: "const ccy = (discount.currency || currencyCode || 'USD').toUpperCase();",
+  },
+  // Twilio PriceUnit default when the carrier omits the ISO code.
+  {
+    file: 'server/voice-gateway/routes/twilio.ts',
+    text: "twilioPriceCurrency: (req.body.PriceUnit as string) ?? 'USD',",
+  },
+];
+
+function withoutAllowedUsdFallbacks(matches: Match[]): Match[] {
+  const unused = [...ALLOWED_USD_FALLBACKS];
+  return matches.filter((m) => {
+    const i = unused.findIndex((a) => a.file === m.file && a.text === m.text.trim());
+    if (i === -1) return true;
+    unused.splice(i, 1);
+    return false;
+  });
+}
 
 function runRipgrep(args: string[]): string {
   try {
@@ -192,10 +223,12 @@ describe('task #1006 audit: no hardcoded business-logic $ / USD outside the allo
       'client-app/src',
       'server',
     ]);
-    const matches = parseMatches(out)
-      .filter((m) => !isExcludedPath(m.file))
-      .filter((m) => !isCommentLine(m.text))
-      .filter((m) => !ALLOWED_FILES.has(m.file));
+    const matches = withoutAllowedUsdFallbacks(
+      parseMatches(out)
+        .filter((m) => !isExcludedPath(m.file))
+        .filter((m) => !isCommentLine(m.text))
+        .filter((m) => !ALLOWED_FILES.has(m.file)),
+    );
 
     if (matches.length > 0) {
       const detail = matches

@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
+import { readyI18n, WithI18n } from './_withI18n';
 
 void React;
 
@@ -227,17 +228,21 @@ afterEach(() => {
 
 async function renderBilling() {
   vi.resetModules();
+  const { readyI18n: ready, WithI18n: Wrap } = await import('./_withI18n');
+  await ready(['common', 'tenant']);
   const mod = await import('../../client-app/src/pages/Billing');
   const Billing = mod.default as React.ComponentType;
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <Billing />
-      </MemoryRouter>
-    </QueryClientProvider>,
+    <Wrap>
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Billing />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </Wrap>,
   );
 }
 

@@ -39,6 +39,12 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { randomUUID } from 'crypto';
 
+const dbUrl =
+  process.env.DATABASE_URL
+  || process.env.DATABASE_URL_PRIVILEGED
+  || process.env.PLATFORM_DB_POOL_URL
+  || '';
+
 // Stub only the alert dispatcher. The route's contract for the dispatcher
 // is "call it with `force: true` + `source: 'admin_reissue'`, forward
 // the platform admin's user id, then audit-log the returned status /
@@ -246,7 +252,7 @@ async function fetchAuditRow(action: string): Promise<Record<string, unknown> | 
   });
 }
 
-describe('Platform verified-caller-health endpoints (end-to-end)', () => {
+describe.skipIf(!dbUrl)('Platform verified-caller-health endpoints (end-to-end)', () => {
   beforeAll(async () => {
     process.env.ADMIN_JWT_SECRET =
       process.env.ADMIN_JWT_SECRET ?? 'qvo-verified-caller-health-e2e-secret';

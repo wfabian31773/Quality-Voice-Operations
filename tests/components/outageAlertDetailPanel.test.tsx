@@ -189,6 +189,17 @@ function installApi({ alerts, detail }: InstallOptions = {}): void {
   });
 }
 
+function HistoryHarness({ connectors }: { connectors: [] }) {
+  const [selectedAlertId, setSelectedAlertId] = React.useState<string | null>(null);
+  return (
+    <OutageAlertHistory
+      connectors={connectors}
+      selectedAlertId={selectedAlertId}
+      setSelectedAlertId={setSelectedAlertId}
+    />
+  );
+}
+
 function renderHistory() {
   const client = new QueryClient({
     defaultOptions: {
@@ -198,7 +209,7 @@ function renderHistory() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <OutageAlertHistory connectors={[]} />
+      <HistoryHarness connectors={[]} />
     </QueryClientProvider>,
   );
 }

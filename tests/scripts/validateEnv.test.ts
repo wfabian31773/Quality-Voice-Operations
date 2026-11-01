@@ -78,6 +78,8 @@ function resetEnv(): void {
   delete process.env.S3_ENDPOINT;
   delete process.env.OBJECT_STORAGE_LOCAL_DIR;
   delete process.env.PRIVATE_OBJECT_DIR;
+  // Cloud / sandbox hosts may export Azul-owned names. validate-env warns
+  // on those, so isolate them from the "healthy production" assertion.
   delete process.env.SUPABASE_DATABASE_URL;
   delete process.env.TICKETING_SYSTEM_URL;
   delete process.env.TICKETING_API_KEY;

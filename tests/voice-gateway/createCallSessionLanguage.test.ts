@@ -82,6 +82,28 @@ function findInsertCall(): CapturedInsert {
   return { sql: call[0] as string, values: (call[1] as unknown[]) ?? [] };
 }
 
+function languageValue(insert: CapturedInsert): unknown {
+  const colMatch = insert.sql.match(
+    /INSERT INTO call_sessions\s*\(([\s\S]*?)\)\s*VALUES/i,
+  );
+  if (!colMatch) throw new Error('call_sessions INSERT has no column list');
+  const names = colMatch[1].split(',').map((s) => s.trim());
+  const langCol = names.indexOf('language');
+  if (langCol < 0) throw new Error('language column missing from call_sessions INSERT');
+
+  const valuesMatch = insert.sql.match(/VALUES\s*\(([\s\S]*)\)\s*$/i);
+  if (!valuesMatch) throw new Error('call_sessions INSERT has no values list');
+  // start_time is NOW() — collapse the function so a comma-split stays aligned.
+  const tokens = valuesMatch[1]
+    .replace(/\bNOW\s*\(\s*\)/gi, 'NOW()')
+    .split(',')
+    .map((s) => s.trim());
+  const placeholder = tokens[langCol];
+  const m = placeholder?.match(/^\$(\d+)$/);
+  if (!m) throw new Error('language placeholder missing from call_sessions INSERT');
+  return insert.values[Number(m[1]) - 1];
+}
+
 describe('voice gateway call creation snapshots agent language onto call_sessions', () => {
   it('writes the loaded agent config language into the language column', async () => {
     const { loadAgentConfig } = await import(
@@ -121,9 +143,8 @@ describe('voice gateway call creation snapshots agent language onto call_session
     expect(callSessionId).toMatch(/^[0-9a-f-]{36}$/i);
 
     const insert = findInsertCall();
-    // The 11th positional parameter ($11) on the INSERT is `language`.
     expect(insert.sql).toMatch(/INSERT INTO call_sessions[\s\S]*language[\s\S]*VALUES/);
-    expect(insert.values[10]).toBe('es');
+    expect(languageValue(insert)).toBe('es');
   });
 
   it('persists null when the agent has no configured language', async () => {
@@ -162,7 +183,7 @@ describe('voice gateway call creation snapshots agent language onto call_session
     });
 
     const insert = findInsertCall();
-    expect(insert.values[10]).toBe('en');
+    expect(languageValue(insert)).toBe('en');
   });
 
   it('coerces the language value to NULL when the column is intentionally absent', async () => {
@@ -183,7 +204,7 @@ describe('voice gateway call creation snapshots agent language onto call_session
     });
 
     const insert = findInsertCall();
-    expect(insert.values[10]).toBeNull();
+    expect(languageValue(insert)).toBeNull();
   });
 
   it('trims and length-caps oversized language inputs to fit VARCHAR(8)', async () => {
@@ -202,8 +223,8 @@ describe('voice gateway call creation snapshots agent language onto call_session
     });
 
     const insert = findInsertCall();
-    expect(typeof insert.values[10]).toBe('string');
-    const v = insert.values[10] as string;
+    expect(typeof languageValue(insert)).toBe('string');
+    const v = languageValue(insert) as string;
     expect(v.length).toBeLessThanOrEqual(8);
     expect(v.startsWith('pt-BR')).toBe(true);
   });

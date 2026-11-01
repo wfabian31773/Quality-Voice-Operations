@@ -226,7 +226,7 @@ describe('GET /billing/subscription — stacked discounts', () => {
     // the removed `discount.promotion_code` would throw on newer API
     // versions and silently drop every entry.
     expect(subscriptionsRetrieveMock).toHaveBeenCalledWith('sub_test', {
-      expand: ['discounts.promotion_code'],
+      expand: ['discounts.promotion_code', 'discounts.source.coupon'],
     });
   });
 

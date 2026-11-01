@@ -51,7 +51,7 @@ interface HarnessReport {
   cases: CaseResult[];
 }
 
-/** The production Node major: .nvmrc if present, else .node-version (this repo has .node-version = 20). */
+/** The production Node major: .nvmrc if present, else .node-version (this repo pins Node 22). */
 function productionNodeMajor(): string {
   for (const file of ['.nvmrc', '.node-version']) {
     const full = path.join(REPO_ROOT, file);

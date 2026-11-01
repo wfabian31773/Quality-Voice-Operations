@@ -41,6 +41,12 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import request from 'supertest';
 import { randomUUID } from 'crypto';
 
+const dbUrl =
+  process.env.DATABASE_URL
+  || process.env.DATABASE_URL_PRIVILEGED
+  || process.env.PLATFORM_DB_POOL_URL
+  || '';
+
 // Wrap the snapshot helper so we can swap between "delegate to the real
 // module" (positive test) and "throw" (negative test) per test case.
 // Default behaviour (set in beforeAll once the real module is loaded)
@@ -159,7 +165,7 @@ async function cleanup() {
   });
 }
 
-describe('GET /platform/connector-health crmRevalidation block (end-to-end)', () => {
+describe.skipIf(!dbUrl)('GET /platform/connector-health crmRevalidation block (end-to-end)', () => {
   beforeAll(async () => {
     process.env.ADMIN_JWT_SECRET =
       process.env.ADMIN_JWT_SECRET ?? 'qvo-connector-health-crm-reval-secret';

@@ -548,12 +548,19 @@ describe('POST /book-demo/calendar-webhook — provider routing', () => {
         metadata: { leadId: 3 },
       },
     });
+    // Canonical Cal.com verification signs `${timestamp}.${body}` and
+    // rejects a body-only HMAC without x-cal-timestamp.
+    const ts = Math.floor(Date.now() / 1000);
     const r = await request(app)
       .post(WEBHOOK_PATH)
       .set('Content-Type', 'application/json')
+      .set('x-cal-timestamp', String(ts))
       .set(
         'x-cal-signature-256',
-        crypto.createHmac('sha256', 'test_calcom_secret_for_routing').update(body).digest('hex'),
+        crypto
+          .createHmac('sha256', 'test_calcom_secret_for_routing')
+          .update(`${ts}.${body}`)
+          .digest('hex'),
       )
       .send(body);
 

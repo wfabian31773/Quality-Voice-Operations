@@ -1,11 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readAdminUiSource } from './_adminUiSource';
 
-const adminUiFile = readFileSync(
-  join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
-  'utf8',
-);
+const adminUiFile = readAdminUiSource();
 const clientClassifier = readFileSync(
   join(process.cwd(), 'client-app/src/lib/smtpErrorClass.ts'),
   'utf8',

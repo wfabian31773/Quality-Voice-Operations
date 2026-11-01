@@ -17,6 +17,31 @@ import {
   act,
 } from '@testing-library/react';
 
+import { readyI18n, WithI18n } from './_withI18n';
+
+const { apiMock } = vi.hoisted(() => ({
+  apiMock: {
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+  },
+}));
+
+vi.mock('../../client-app/src/lib/api', () => ({ api: apiMock }));
+vi.mock('../../client-app/src/lib/auth', () => ({
+  useAuth: () => ({
+    user: {
+      id: 'user-1',
+      tenantId: 'tenant-1',
+      email: 'manager@tenant.dev',
+      role: 'tenant_owner',
+    },
+    initialized: true,
+  }),
+}));
+
 import SmsInbox from '../../client-app/src/pages/SmsInbox';
 
 void React;
@@ -84,21 +109,20 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await readyI18n(['common', 'tenant']);
   localStorage.clear();
   loginAsManager();
 
-  originalFetch = global.fetch;
-  global.fetch = (async (input: RequestInfo | URL) => {
-    const url = typeof input === 'string' ? input : input.toString();
-    const path = url.replace(/^https?:\/\/[^/]+/, '').replace(/^\/api/, '');
-
-    // Initial bootstrap: phone lines + status counts.
+  apiMock.get.mockReset();
+  apiMock.post.mockReset();
+  apiMock.patch.mockReset();
+  apiMock.get.mockImplementation(async (path: string) => {
     if (path.startsWith('/sms-inbox/conversations')) {
-      return jsonResponse({ conversations: [PHONE_LINE] });
+      return { conversations: [PHONE_LINE] };
     }
     if (path.startsWith('/sms-inbox/counts')) {
-      return jsonResponse({
+      return {
         counts: {
           open: 1,
           pending: 0,
@@ -107,25 +131,22 @@ beforeEach(() => {
           archived: 0,
           unread: 0,
         },
-      });
+      };
     }
-    // Conversation list (re-fetched whenever the filter changes).
-    if (path.startsWith('/sms-inbox/threads?')) {
-      return jsonResponse({ conversations: [CONVERSATION], total: 1 });
+    if (path.startsWith('/sms-inbox/deferred')) {
+      return { deferred: [] };
     }
-    // Selecting a conversation pulls its messages + notes.
-    if (path.endsWith('/messages') && path.includes('/threads/')) {
-      return jsonResponse({ messages: [] });
+    if (path.startsWith('/sms-inbox/threads?') || path.startsWith('/sms-inbox/threads')) {
+      if (path.includes('/messages')) return { messages: [] };
+      if (path.includes('/notes')) return { notes: [] };
+      if (path.includes('/activity')) return { log: [] };
+      return { conversations: [CONVERSATION], total: 1 };
     }
-    if (path.endsWith('/notes') && path.includes('/threads/')) {
-      return jsonResponse({ notes: [] });
-    }
+    return {};
+  });
 
-    // Catch-all so an unexpected endpoint doesn't break the render
-    // (and so a regression that adds an extra fetch surfaces as a
-    // visible 200 instead of an Unauthorized redirect).
-    return jsonResponse({});
-  }) as typeof fetch;
+  originalFetch = global.fetch;
+  global.fetch = (async () => jsonResponse({})) as typeof fetch;
 
   // The SmsInbox layout uses scrollIntoView on the messages-end
   // sentinel; happy-dom doesn't ship the API.
@@ -139,7 +160,11 @@ afterEach(() => {
 });
 
 async function openConversationAndGetReplyInput(): Promise<HTMLInputElement> {
-  render(<SmsInbox />);
+  render(
+    <WithI18n>
+      <SmsInbox />
+    </WithI18n>,
+  );
 
   // Wait for the loading skeleton to be replaced by the inbox.
   const conversationButton = await screen.findByText('Jane Customer');

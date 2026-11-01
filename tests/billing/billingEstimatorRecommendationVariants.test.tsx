@@ -16,6 +16,7 @@ interface RecommendationAttribution {
   recommendedTier: PlanTier;
   monthlySavingsCents: number;
   trailingWindowMonths?: number;
+  pitch?: 'tier-switch' | 'annual-only';
 }
 
 type SwitchPlanCall = {
@@ -184,6 +185,7 @@ describe('BillingEstimator recommendation card variants', () => {
             recommendedTier: 'starter',
             monthlySavingsCents: 2_235,
             trailingWindowMonths: 3,
+            pitch: 'annual-only',
           },
         },
       ]);

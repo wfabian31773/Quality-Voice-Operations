@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readAdminUiSource } from './_adminUiSource';
 import {
   partitionFailuresByPermanence,
   renderDigestEmail,
@@ -26,10 +27,7 @@ const migration = readFileSync(
   join(process.cwd(), 'migrations/058_docs_feedback_reply_digest.sql'),
   'utf8',
 );
-const platformAdminFile = readFileSync(
-  join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
-  'utf8',
-);
+const platformAdminFile = readAdminUiSource();
 
 describe('docs feedback failed-reply surfacing', () => {
   it('GET /docs/feedback/comments joins the latest reply and exposes last_reply_failed', () => {

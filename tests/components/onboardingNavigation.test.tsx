@@ -48,6 +48,7 @@ import {
 } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { readyI18n, WithI18n } from './_withI18n';
 
 void React;
 
@@ -118,11 +119,13 @@ function renderOnboarding() {
     },
   });
   return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/onboarding']}>
-        <Onboarding />
-      </MemoryRouter>
-    </QueryClientProvider>,
+    <WithI18n>
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/onboarding']}>
+          <Onboarding />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </WithI18n>,
   );
 }
 
@@ -148,7 +151,8 @@ function patchedSteps(): number[] {
     .map(([, body]) => (body as { onboarding_step?: number }).onboarding_step ?? -1);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await readyI18n(['common', 'tenant']);
   installDefaultApi({});
 });
 

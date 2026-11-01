@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
 import request from 'supertest';
+import { readAdminUiSource } from './_adminUiSource';
 
 // ---- Static contract checks -------------------------------------------------
 const helperFile = readFileSync(
@@ -17,10 +18,7 @@ const supportFile = readFileSync(
   join(process.cwd(), 'server/admin-api/routes/support.ts'),
   'utf8',
 );
-const adminUiFile = readFileSync(
-  join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
-  'utf8',
-);
+const adminUiFile = readAdminUiSource();
 
 describe('supportReplyDeliveryAlert helper — static contract', () => {
   it('exports the threshold constant + helper used by both retry paths', () => {

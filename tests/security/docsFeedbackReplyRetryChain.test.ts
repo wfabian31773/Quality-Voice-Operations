@@ -1,15 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readAdminUiSource } from './_adminUiSource';
 
 const supportFile = readFileSync(
   join(process.cwd(), 'server/admin-api/routes/support.ts'),
   'utf8',
 );
-const platformAdminFile = readFileSync(
-  join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
-  'utf8',
-);
+const platformAdminFile = readAdminUiSource();
 const migration = readFileSync(
   join(process.cwd(), 'migrations/070_docs_feedback_replies_retry_of.sql'),
   'utf8',
@@ -78,16 +76,17 @@ describe('docs feedback reply retry-chain UI', () => {
   });
 
   it('labels retry rows with a Retry # badge and the attempt count', () => {
-    expect(platformAdminFile).toMatch(/Retry #\{idx \+ 1\}/);
-    expect(platformAdminFile).toMatch(/\{totalAttempts\} attempts/);
+    expect(platformAdminFile).toMatch(/retry_n/);
+    expect(platformAdminFile).toMatch(/attempts_chain_title/);
   });
 
   it('does not repeat the body for each retry row', () => {
-    // The retry rows render only timestamp/from/status, not the body again,
-    // because retries always carry the same body as the chain root.
-    const idx = platformAdminFile.indexOf('Retries of this attempt');
+    // The chain root still uses whitespace-pre-wrap for its own body.
+    // Retry rows (the block after retries_section) render only
+    // timestamp/from/status — retries always carry the same body as the root.
+    const idx = platformAdminFile.indexOf('platform_admin.docs_feedback.retries_section');
     expect(idx).toBeGreaterThan(-1);
-    const after = platformAdminFile.slice(idx, idx + 800);
+    const after = platformAdminFile.slice(idx, idx + 1200);
     expect(after).not.toMatch(/whitespace-pre-wrap/);
   });
 });

@@ -26,6 +26,7 @@ describe('healthcare data-control preflight', () => {
         { filename: '115_healthcare_control_evidence.sql' },
         { filename: '116_healthcare_activation_readiness.sql' },
         { filename: '117_tenant_rls_remediation.sql' },
+        { filename: '118_platform_admin_mfa.sql' },
       ] };
       if (sql.includes('rls_enabled_count')) return { rows: [{ tenant_table_count: TENANT_DATA_CONTROL_CATALOG.length, rls_enabled_count: TENANT_DATA_CONTROL_CATALOG.length }] };
       if (sql.includes('referential_constraints')) return { rows: TENANT_DATA_CONTROL_CATALOG.map((entry) => ({

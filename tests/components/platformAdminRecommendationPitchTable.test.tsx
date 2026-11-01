@@ -43,7 +43,7 @@ import {
   within,
 } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 void React;
@@ -205,9 +205,9 @@ async function renderPlatformAdmin(): Promise<{ client: QueryClient }> {
   await i18nMod.default.loadNamespaces(['admin', 'common', 'tenant']);
 
   const PlatformAdminMod = await import(
-    '../../client-app/src/pages/PlatformAdmin'
+    '../../client-app/src/pages/admin/dashboard/PlatformAdminLayout'
   );
-  const PlatformAdmin =
+  const PlatformAdminLayout =
     PlatformAdminMod.default as React.ComponentType;
 
   const client = new QueryClient({
@@ -220,8 +220,13 @@ async function renderPlatformAdmin(): Promise<{ client: QueryClient }> {
   render(
     <I18nextProvider i18n={i18nMod.default}>
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={['/admin']}>
-          <PlatformAdmin />
+        <MemoryRouter initialEntries={['/admin/dashboard']}>
+          <Routes>
+            <Route path="/admin/dashboard" element={<PlatformAdminLayout />}>
+              <Route index element={<div />} />
+              <Route path="*" element={<div />} />
+            </Route>
+          </Routes>
         </MemoryRouter>
       </QueryClientProvider>
     </I18nextProvider>,
