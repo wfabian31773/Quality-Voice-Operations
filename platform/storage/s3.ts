@@ -71,6 +71,7 @@ export class S3CompatibleStorage implements StorageAdapter {
   constructor(
     private readonly client: S3Client,
     private readonly config: S3StorageConfig,
+    private readonly presignClient: S3Client = client,
   ) {}
 
   private withPrefix(relativeKey: string): string {
@@ -178,7 +179,7 @@ export class S3CompatibleStorage implements StorageAdapter {
   async getSignedUploadUrl(key: string, ttlSec: number): Promise<SignedUploadUrl> {
     const objectKey = this.toObjectKey(key);
     const url = await getSignedUrl(
-      this.client,
+      this.presignClient,
       new PutObjectCommand({ Bucket: this.config.bucket, Key: objectKey }),
       { expiresIn: ttlSec },
     );
@@ -222,16 +223,18 @@ export function createS3StorageAdapter(
   client?: S3Client,
 ): S3CompatibleStorage {
   const config = readS3StorageConfig(env);
-  const resolvedClient =
-    client ??
-    new S3Client({
-      region: config.region,
-      endpoint: config.endpoint,
-      forcePathStyle: config.forcePathStyle,
-      credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey,
-      },
-    });
-  return new S3CompatibleStorage(resolvedClient, config);
+  if (client) return new S3CompatibleStorage(client, config);
+  const clientConfig = {
+    region: config.region,
+    endpoint: config.endpoint,
+    forcePathStyle: config.forcePathStyle,
+    credentials: {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey,
+    },
+  };
+  // The SDK's default checksum would sign the empty body's CRC32 into the URL,
+  // and S3 would then reject the real file the client PUTs to it.
+  const presignClient = new S3Client({ ...clientConfig, requestChecksumCalculation: 'WHEN_REQUIRED' });
+  return new S3CompatibleStorage(new S3Client(clientConfig), config, presignClient);
 }

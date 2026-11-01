@@ -488,6 +488,26 @@ describe('ObjectStorageService path validation and streaming', () => {
   });
 });
 
+describe('S3CompatibleStorage (real SDK presigner, no network)', () => {
+  it('presigns upload URLs without a body checksum', async () => {
+    const adapter = createS3StorageAdapter({
+      S3_BUCKET: 'qvo-objects',
+      S3_ACCESS_KEY_ID: 'AKIAEXAMPLE',
+      S3_SECRET_ACCESS_KEY: 'secret',
+      S3_ENDPOINT: 'http://localhost:9000',
+      S3_REGION: 'us-east-1',
+    });
+    const signed = await adapter.getSignedUploadUrl(storageKeys.upload('u1'), 60);
+    const url = new URL(signed.url);
+    const params = [...url.searchParams.keys()].map((name) => name.toLowerCase());
+
+    expect(url.pathname).toBe('/qvo-objects/uploads/u1');
+    expect(params).toContain('x-amz-signature');
+    expect(params.filter((name) => name.startsWith('x-amz-checksum-'))).toEqual([]);
+    expect(params).not.toContain('x-amz-sdk-checksum-algorithm');
+  });
+});
+
 describe('S3CompatibleStorage (mocked SDK)', () => {
   it('puts, heads, gets, and deletes through the S3 client', async () => {
     const send = vi.fn();
