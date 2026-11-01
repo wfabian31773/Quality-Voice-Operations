@@ -1,13 +1,14 @@
 // Runs the real route-export download handlers and cleanup cycle against the
-// real S3 adapter (only the SDK transport is faked) to prove the path persisted
-// at export time resolves to the archive for every bucket / prefix combination.
+// real S3 and Replit adapters (only the SDK transport is faked) to prove the path
+// persisted at export time resolves to the archive for every bucket / prefix /
+// private-dir combination.
 import { S3Client } from '@aws-sdk/client-s3';
 import { PassThrough, Readable } from 'node:stream';
 import type { Request, Response } from 'express';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withPrivilegedClient } from '../../platform/db';
 import { runRouteExportArchiveCleanupCycle } from '../../platform/dispatch/RouteExportArchiveCleanupScheduler';
-import { resetStorageAdapterForTests, storageKeys } from '../../platform/storage';
+import { objectStorageClient, resetStorageAdapterForTests, storageKeys } from '../../platform/storage';
 import { ObjectStorageService } from '../../server/replit_integrations/object_storage';
 
 const queryMock = vi.fn();
@@ -39,7 +40,14 @@ vi.mock('../../platform/email', () => ({
   dispatchRouteExportFailedEmail: vi.fn(),
 }));
 
-const STORAGE_ENV = ['OBJECT_STORAGE_PROVIDER', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY', 'S3_PREFIX'] as const;
+const STORAGE_ENV = [
+  'OBJECT_STORAGE_PROVIDER',
+  'PRIVATE_OBJECT_DIR',
+  'S3_BUCKET',
+  'S3_ACCESS_KEY_ID',
+  'S3_SECRET_ACCESS_KEY',
+  'S3_PREFIX',
+] as const;
 const saved: Record<string, string | undefined> = {};
 for (const name of STORAGE_ENV) saved[name] = process.env[name];
 
@@ -58,6 +66,32 @@ function useS3(bucket: string, prefix?: string) {
   if (prefix) process.env.S3_PREFIX = prefix;
   else delete process.env.S3_PREFIX;
   resetStorageAdapterForTests();
+}
+
+function useReplit(privateDir: string) {
+  process.env.OBJECT_STORAGE_PROVIDER = 'replit';
+  process.env.PRIVATE_OBJECT_DIR = privateDir;
+  resetStorageAdapterForTests();
+  vi.spyOn(objectStorageClient, 'bucket').mockImplementation(((bucketName: string) => ({
+    file: (objectName: string) => {
+      const id = `${bucketName}/${objectName}`;
+      const stored = () => {
+        const body = objects.get(id);
+        if (!body) throw Object.assign(new Error('missing'), { code: 404 });
+        return body;
+      };
+      return {
+        save: async (body: Buffer) => void objects.set(id, body),
+        exists: async () => [objects.has(id)],
+        getMetadata: async () => [{ contentType: 'application/zip', size: stored().length }],
+        createReadStream: () => Readable.from([stored()]),
+        delete: async () => {
+          stored();
+          objects.delete(id);
+        },
+      };
+    },
+  })) as never);
 }
 
 function makeRes() {
@@ -126,15 +160,19 @@ afterEach(() => {
   resetStorageAdapterForTests();
 });
 
+const ARCHIVE_KEY = `dispatch-route-exports/${TENANT_ID}/${EXPORT_ID}.zip`;
+
 describe.each([
-  { bucket: 'objects', prefix: 'prod', objectKey: `prod/dispatch-route-exports/${TENANT_ID}/${EXPORT_ID}.zip` },
-  { bucket: 'objects', prefix: undefined, objectKey: `dispatch-route-exports/${TENANT_ID}/${EXPORT_ID}.zip` },
-  { bucket: 'qvo-objects', prefix: 'prod', objectKey: `prod/dispatch-route-exports/${TENANT_ID}/${EXPORT_ID}.zip` },
-  { bucket: 'qvo-objects', prefix: undefined, objectKey: `dispatch-route-exports/${TENANT_ID}/${EXPORT_ID}.zip` },
-])('route-export archive under bucket=$bucket prefix=$prefix', ({ bucket, prefix, objectKey }) => {
+  { backend: 's3 bucket=objects prefix=prod', use: () => useS3('objects', 'prod'), objectKey: `prod/${ARCHIVE_KEY}` },
+  { backend: 's3 bucket=objects', use: () => useS3('objects'), objectKey: ARCHIVE_KEY },
+  { backend: 's3 bucket=qvo-objects prefix=prod', use: () => useS3('qvo-objects', 'prod'), objectKey: `prod/${ARCHIVE_KEY}` },
+  { backend: 's3 bucket=qvo-objects', use: () => useS3('qvo-objects'), objectKey: ARCHIVE_KEY },
+  { backend: 'replit dir=/objects/private', use: () => useReplit('/objects/private'), objectKey: `objects/private/${ARCHIVE_KEY}` },
+  { backend: 'replit dir=/qvo-bucket/private', use: () => useReplit('/qvo-bucket/private'), objectKey: `qvo-bucket/private/${ARCHIVE_KEY}` },
+])('route-export archive on $backend', ({ use, objectKey }) => {
   // Same call the export worker makes before saving archive_object_path.
   async function storeArchive(): Promise<string> {
-    useS3(bucket, prefix);
+    use();
     const archivePath = await new ObjectStorageService().uploadPrivateObject(
       storageKeys.routeExport(TENANT_ID, EXPORT_ID),
       ARCHIVE,

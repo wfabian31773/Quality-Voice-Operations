@@ -330,6 +330,9 @@ describe('ReplitSidecarStorage (mocked client)', () => {
       download: vi.fn().mockResolvedValue([Buffer.from('ok')]),
       exists: vi.fn().mockResolvedValue([true]),
       setMetadata: vi.fn().mockResolvedValue(undefined),
+      getMetadata: vi.fn().mockResolvedValue([{ contentType: 'application/zip', size: 2 }]),
+      createReadStream: vi.fn(() => Readable.from([Buffer.from('ok')])),
+      delete: vi.fn().mockResolvedValue(undefined),
     };
     const file = vi.fn(() => fileMock);
     const bucket = vi.fn(() => ({ file }));
@@ -350,6 +353,70 @@ describe('ReplitSidecarStorage (mocked client)', () => {
       for (const call of [...file.mock.calls]) expect(call).toEqual(['private/uploads/u1']);
     },
   );
+
+  describe.each([
+    { privateDir: '/objects/private', bucketName: 'objects', dirObject: 'private/' },
+    { privateDir: 'objects/private/', bucketName: 'objects', dirObject: 'private/' },
+    { privateDir: '/objects', bucketName: 'objects', dirObject: '' },
+    { privateDir: '/qvo-bucket/private', bucketName: 'qvo-bucket', dirObject: 'private/' },
+  ])('with PRIVATE_OBJECT_DIR=$privateDir', ({ privateDir, bucketName, dirObject }) => {
+    const key = storageKeys.routeExport('t1', 'e1');
+    const objectName = `${dirObject}${key}`;
+
+    it('resolves a saved path exactly once on every operation', async () => {
+      const { adapter, bucket, file, fileMock } = replitAdapter(privateDir);
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(new Response(JSON.stringify({ signed_url: 'https://signed.example/x' })));
+      try {
+        const stored = await adapter.put(key, Buffer.from('ok'));
+        expect(stored).toBe(`/${bucketName}/${objectName}`);
+
+        await expect(adapter.get(stored)).resolves.toEqual(Buffer.from('ok'));
+        await expect(adapter.exists(stored)).resolves.toBe(true);
+        await expect(adapter.getMetadata(stored)).resolves.toEqual({ contentType: 'application/zip', size: 2 });
+        (await adapter.createReadStream(stored)).destroy();
+        await expect(adapter.delete(stored)).resolves.toBe(true);
+        await adapter.getSignedUploadUrl(stored, 60);
+
+        expect(fileMock.delete).toHaveBeenCalledTimes(1);
+        for (const call of bucket.mock.calls) expect(call).toEqual([bucketName]);
+        for (const call of file.mock.calls) expect(call).toEqual([objectName]);
+        const signRequest = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
+        expect(signRequest).toMatchObject({ bucket_name: bucketName, object_name: objectName });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('keeps entity paths relative to the private dir', async () => {
+      const { adapter, file } = replitAdapter(privateDir);
+      await adapter.get('/objects/uploads/u1');
+      await adapter.get(`/objects/${key}`);
+      expect(file.mock.calls).toEqual([[`${dirObject}uploads/u1`], [objectName]]);
+    });
+  });
+
+  it('reads /objects/private/... as an entity path under other buckets', async () => {
+    const { adapter, bucket, file } = replitAdapter('/qvo-bucket/private');
+    await adapter.get('/objects/private/a');
+    expect(bucket).toHaveBeenCalledWith('qvo-bucket');
+    expect(file).toHaveBeenCalledWith('private/private/a');
+  });
+
+  it('only treats /objects/ keys under the exact private dir as absolute', async () => {
+    const { adapter, file } = replitAdapter('/objects/private');
+    await adapter.get('/objects/private-sibling/a');
+    expect(file).toHaveBeenCalledWith('private/private-sibling/a');
+  });
+
+  it('keeps upload entity paths working when the private dir is /objects/uploads', async () => {
+    const { adapter, file } = replitAdapter('/objects/uploads');
+    expect(await adapter.put(storageKeys.upload('u1'), Buffer.from('ok'))).toBe('/objects/uploads/uploads/u1');
+    await adapter.get('/objects/uploads/uploads/u1');
+    await adapter.get('/objects/uploads/u1');
+    for (const call of file.mock.calls) expect(call).toEqual(['uploads/uploads/u1']);
+  });
 
   it('only treats keys under the exact private dir as absolute', async () => {
     const { adapter, file } = replitAdapter('bucket/private');

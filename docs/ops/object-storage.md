@@ -86,6 +86,12 @@ also use `/objects/<entityId>`. Both resolve through the same adapter. The one
 exception is `S3_BUCKET=objects`, where `put` returns `/objects/<key>` without
 `S3_PREFIX`, because that shape always reads back as an entity path.
 
+On Replit with a bucket named `objects`, `put` still returns the absolute path.
+`/objects/...` under `PRIVATE_OBJECT_DIR` reads back as absolute, except
+`/objects/uploads/<id>`, which is always an entity. So with
+`PRIVATE_OBJECT_DIR=/objects/private`, a key that itself starts with `private/`
+cannot be addressed by its entity path; `storageKeys` never produces one.
+
 Dispatch attachments accept only an `object_path` that normalizes to
 `/objects/uploads/<id>` and that exists in storage; anything else is a 400.
 Attachment downloads serve only `/objects/` paths.

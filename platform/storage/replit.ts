@@ -101,7 +101,13 @@ export class ReplitSidecarStorage implements StorageAdapter {
 
   private locate(key: string): { bucketName: string; objectName: string; fullPath: string } {
     if (isEntityObjectPath(key)) {
-      return this.locateAbsolute(toFullPath(this.privateDir(), key.slice('/objects/'.length)));
+      const dir = this.privateDir();
+      // A bucket named "objects" makes put() paths look like entity paths. Those
+      // are already absolute; only `/objects/uploads/<id>` is always an entity.
+      if (key.startsWith(`${dir}/`) && !isCanonicalUploadObjectPath(key)) {
+        return this.locateAbsolute(key);
+      }
+      return this.locateAbsolute(toFullPath(dir, key.slice('/objects/'.length)));
     }
     if (key.startsWith('/')) {
       return this.locateAbsolute(key);
