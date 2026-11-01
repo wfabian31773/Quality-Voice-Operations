@@ -118,7 +118,12 @@ interface CapturedFetch {
 let fetchCalls: CapturedFetch[] = [];
 let fetchHandler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-beforeEach(() => {
+beforeEach(async () => {
+  const { readyI18n } = await import('../components/_withI18n');
+  await readyI18n(['common', 'marketing']);
+  // Pricing persists monthly/annual on this key; a prior test that
+  // toggles Annual would otherwise leak into the next case.
+  window.localStorage.clear();
   analyticsCalls.pageViews = [];
   analyticsCalls.ctaClicks = [];
   analyticsCalls.conversionEvents = [];

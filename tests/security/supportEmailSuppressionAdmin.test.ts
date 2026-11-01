@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
 import request from 'supertest';
+import { readAdminUiSource } from './_adminUiSource';
 
 // ---- Static contract checks -------------------------------------------------
 //
@@ -14,10 +15,7 @@ const supportFile = readFileSync(
   join(process.cwd(), 'server/admin-api/routes/support.ts'),
   'utf8',
 );
-const adminUiFile = readFileSync(
-  join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
-  'utf8',
-);
+const adminUiFile = readAdminUiSource();
 const suppressionHelper = readFileSync(
   join(process.cwd(), 'platform/email/SupportEmailSuppression.ts'),
   'utf8',
@@ -122,7 +120,7 @@ describe('PlatformAdmin UI — Suppress / Unsuppress controls', () => {
 
   it('shows a Suppressed badge for rows on the list', () => {
     expect(adminUiFile).toMatch(/function SuppressedBadge/);
-    expect(adminUiFile).toMatch(/Suppressed{wasManual \? ' by ops' : ''}/);
+    expect(adminUiFile).toMatch(/wasManual \?\s*adminT\('platform_admin\.support_inbox\.suppressed_by_ops'\)/);
   });
 
   it('renders the Suppressed badge inside the ticket thread view', () => {

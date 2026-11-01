@@ -2,6 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'crypto';
 import { classifyIsolationProbeError } from '../../platform/security/isolationProbeErrors';
 
+const dbUrl =
+  process.env.DATABASE_URL
+  || process.env.DATABASE_URL_PRIVILEGED
+  || process.env.PLATFORM_DB_POOL_URL
+  || '';
+
 const FAKE_TENANT_A = randomUUID();
 const FAKE_TENANT_B = randomUUID();
 
@@ -15,7 +21,7 @@ async function getPool() {
   return pool;
 }
 
-describe('Tenant Isolation - RLS Enforcement', () => {
+describe.skipIf(!dbUrl)('Tenant Isolation - RLS Enforcement', () => {
   const RLS_TABLES = [
     'agents', 'phone_numbers', 'call_sessions', 'integrations',
     'connector_configs', 'campaigns', 'campaign_contacts',

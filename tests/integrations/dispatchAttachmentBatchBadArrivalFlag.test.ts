@@ -102,6 +102,39 @@ beforeEach(() => {
   queryMock.mockReset();
 });
 
+/**
+ * SQL-routed stub so sendCompletionPhotosEmail cannot steal the
+ * closest-approach / exception INSERT mocks from flagBadArrivalIfNeeded.
+ */
+function stubAttachmentQueries(opts: {
+  jobId: string;
+  currentStatus?: string;
+  nextStatus?: string;
+  approach?: { closest_approach_m: number | null; threshold_m?: number } | null;
+  exceptionId?: string;
+  attachmentId?: string;
+}): void {
+  queryMock.mockImplementation(async (sql: string) => {
+    const s = String(sql);
+    if (/6371000 \* 2 \* ASIN/.test(s)) {
+      return { rows: opts.approach ? [opts.approach] : [] };
+    }
+    if (/INSERT INTO dispatch_job_exceptions/.test(s)) {
+      return { rows: [{ id: opts.exceptionId ?? 'exc-1' }] };
+    }
+    if (/INSERT INTO dispatch_job_attachments/.test(s)) {
+      return { rows: [{ id: opts.attachmentId ?? 'att-1' }] };
+    }
+    if (/SELECT id, status FROM dispatch_jobs/.test(s)) {
+      return { rows: [{ id: opts.jobId, status: opts.currentStatus ?? 'in_progress' }] };
+    }
+    if (/UPDATE dispatch_jobs/.test(s)) {
+      return { rows: [{ id: opts.jobId, status: opts.nextStatus ?? 'completed' }] };
+    }
+    return { rows: [] };
+  });
+}
+
 async function buildApp(): Promise<express.Express> {
   const app = express();
   app.use(express.json());
@@ -123,35 +156,12 @@ async function flushAsync(): Promise<void> {
 
 describe('POST /dispatch/jobs/:id/attachments — bad-arrival auto-flag', () => {
   it('flags when a mobile completion_transition into `completed` exceeds the 250 m threshold', async () => {
-    // 1) SELECT job (id, status) — currently in_progress so the
-    //    completion_transition is a *new* completion.
-    queryMock.mockResolvedValueOnce({
-      rows: [{ id: 'job-mob', status: 'in_progress' }],
+    stubAttachmentQueries({
+      jobId: 'job-mob',
+      approach: { closest_approach_m: 612.7, threshold_m: 250 },
+      exceptionId: 'exc-1',
+      attachmentId: 'att-1',
     });
-    // 2) INSERT dispatch_job_attachments
-    queryMock.mockResolvedValueOnce({
-      rows: [{ id: 'att-1' }],
-    });
-    // 3) INSERT dispatch_job_events (attachment_added)
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    // 4) UPDATE dispatch_jobs → completed
-    queryMock.mockResolvedValueOnce({
-      rows: [{ id: 'job-mob', status: 'completed' }],
-    });
-    // 5) INSERT dispatch_job_events (status_change)
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    // 6) fireNotifications template lookup for 'completed' trigger — none
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    // 7) flagBadArrivalIfNeeded — closest-approach SELECT
-    queryMock.mockResolvedValueOnce({
-      rows: [{ closest_approach_m: 612.7 }],
-    });
-    // 8) INSERT dispatch_job_exceptions
-    queryMock.mockResolvedValueOnce({ rows: [{ id: 'exc-1' }] });
-    // 9) INSERT dispatch_job_events (exception_reported)
-    queryMock.mockResolvedValueOnce({ rows: [] });
-    // 10) fireNotifications template lookup for 'exception' trigger — none
-    queryMock.mockResolvedValueOnce({ rows: [] });
 
     const app = await buildApp();
     const res = await request(app)

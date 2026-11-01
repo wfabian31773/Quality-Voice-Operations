@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
 import request from 'supertest';
+import { readAdminUiSource } from './_adminUiSource';
 
 // ---- Static contract checks -------------------------------------------------
 //
@@ -16,10 +17,7 @@ const supportFile = readFileSync(
   join(process.cwd(), 'server/admin-api/routes/support.ts'),
   'utf8',
 );
-const adminUiFile = readFileSync(
-  join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
-  'utf8',
-);
+const adminUiFile = readAdminUiSource();
 
 describe('/support/unsubscribed — endpoint contract', () => {
   it('mounts the new GET endpoint guarded by requireAuth + requirePlatformAdmin', () => {

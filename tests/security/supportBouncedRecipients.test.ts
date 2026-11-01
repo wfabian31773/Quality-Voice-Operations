@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import express from 'express';
 import request from 'supertest';
+import { readAdminUiSource } from './_adminUiSource';
 
 // ---- Static contract checks -------------------------------------------------
 //
@@ -16,8 +17,9 @@ const supportFile = readFileSync(
   join(process.cwd(), 'server/admin-api/routes/support.ts'),
   'utf8',
 );
-const adminUiFile = readFileSync(
-  join(process.cwd(), 'client-app/src/pages/PlatformAdmin.tsx'),
+const adminUiFile = readAdminUiSource();
+const supportRouteFile = readFileSync(
+  join(process.cwd(), 'client-app/src/pages/admin/dashboard/routes/SupportRoute.tsx'),
   'utf8',
 );
 
@@ -412,10 +414,15 @@ describe('PlatformAdmin dashboard — bounced recipient counter card', () => {
   });
 
   it('makes the card click jump to the support inbox and scroll to the BouncedRecipientsPanel', () => {
-    // The panel exposes a stable id that the dashboard scrolls into view.
+    // Hash navigation replaced setActiveTab: the URL carries the intent
+    // and the support route honors `#bounced-recipients-panel` on mount.
     expect(adminUiFile).toMatch(/id="bounced-recipients-panel"/);
-    expect(adminUiFile).toMatch(/getElementById\(\s*['"]bounced-recipients-panel['"]\s*\)/);
-    expect(adminUiFile).toMatch(/setActiveTab\(\s*['"]support['"]\s*\)/);
+    expect(adminUiFile).toMatch(
+      /navigate\(\s*['"]\/admin\/dashboard\/support#bounced-recipients-panel['"]\s*\)/,
+    );
+    expect(supportRouteFile).toMatch(
+      /getElementById\(\s*['"]bounced-recipients-panel['"]\s*\)\s*\?\.scrollIntoView\(/,
+    );
   });
 });
 

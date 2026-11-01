@@ -33,6 +33,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { randomUUID } from 'crypto';
 
+const dbUrl =
+  process.env.DATABASE_URL
+  || process.env.DATABASE_URL_PRIVILEGED
+  || process.env.PLATFORM_DB_POOL_URL
+  || '';
+
 const STAMP = Date.now();
 const ADMIN_TENANT = randomUUID();
 // Two tenants the platform admin should be able to see across in a
@@ -266,7 +272,7 @@ async function cleanup() {
   });
 }
 
-describe('GET /platform/connector-health stuck outbox + expiring tokens (end-to-end)', () => {
+describe.skipIf(!dbUrl)('GET /platform/connector-health stuck outbox + expiring tokens (end-to-end)', () => {
   beforeAll(async () => {
     process.env.ADMIN_JWT_SECRET =
       process.env.ADMIN_JWT_SECRET ?? 'qvo-connector-health-stuck-exp-secret';

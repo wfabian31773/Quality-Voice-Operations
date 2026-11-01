@@ -71,6 +71,12 @@ function resetEnv(): void {
   delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
   delete process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY;
   delete process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION;
+  // Cloud / sandbox hosts may export Azul-owned names. validate-env warns
+  // on those, so isolate them from the "healthy production" assertion.
+  delete process.env.SUPABASE_DATABASE_URL;
+  delete process.env.TICKETING_SYSTEM_URL;
+  delete process.env.TICKETING_API_KEY;
+  delete process.env.AZUL_VISION_ONCALL_NUMBER;
 }
 
 function applyAllProductionVars(): void {

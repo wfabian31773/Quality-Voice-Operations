@@ -8,6 +8,7 @@ import { MemoryRouter } from 'react-router-dom';
 import OperationsAlertsBanner, {
   OPERATIONS_ALERT_CATEGORIES,
 } from '../../client-app/src/components/OperationsAlertsBanner';
+import { readyI18n, WithI18n } from './_withI18n';
 
 void React;
 
@@ -28,15 +29,18 @@ function renderBanner() {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <OperationsAlertsBanner />
-      </MemoryRouter>
-    </QueryClientProvider>,
+    <WithI18n>
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <OperationsAlertsBanner />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </WithI18n>,
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await readyI18n(['admin', 'common']);
   originalFetch = global.fetch;
   global.fetch = ((url: string | URL | Request, init?: RequestInit) =>
     fetchHandler!(String(url), init)) as typeof fetch;

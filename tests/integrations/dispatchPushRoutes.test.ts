@@ -13,8 +13,21 @@ const queryMock = vi.fn();
 const fireDispatchPushMock = vi.fn();
 
 vi.mock('../../platform/db', () => ({
-  getPlatformPool: () => ({ query: queryMock }),
+  getPlatformPool: () => ({
+    query: queryMock,
+    // Scheduling transitions check out a client for BEGIN/COMMIT.
+    connect: async () => ({
+      query: (sql: string, values?: unknown[]) =>
+        (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql)
+          ? Promise.resolve({ rows: [] })
+          : queryMock(sql, values)),
+      release: () => {},
+    }),
+  }),
   getPrivilegedPool: () => ({ query: queryMock }),
+  withTenantContext: vi.fn(async (_client: unknown, _tenantId: string, fn?: () => Promise<void>) => {
+    if (fn) await fn();
+  }),
   withPrivilegedClient: vi.fn(),
 }));
 
@@ -199,7 +212,8 @@ describe('Scheduling route → push event mapping', () => {
             resource_id: 'res-1',
           },
         ],
-      });
+      })
+      .mockResolvedValue({ rows: [], rowCount: 0 });
 
     const app = await buildSchedulingApp();
     const res = await request(app)
@@ -241,7 +255,8 @@ describe('Scheduling route → push event mapping', () => {
       .mockResolvedValueOnce({ rowCount: 1, rows: [] })
       .mockResolvedValueOnce({
         rows: [{ id: 'bk-2', status: 'cancelled' }],
-      });
+      })
+      .mockResolvedValue({ rows: [], rowCount: 0 });
 
     const app = await buildSchedulingApp();
     const res = await request(app)

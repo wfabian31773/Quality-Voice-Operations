@@ -48,7 +48,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: ".node-version"
 
       # No `npm ci` — the script uses only Node built-ins (`node:fs`,
       # `node:url`, `node:path`). Skipping install keeps this gate well under

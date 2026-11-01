@@ -197,17 +197,21 @@ afterEach(() => {
 
 async function renderBilling() {
   vi.resetModules();
+  const { readyI18n: ready, WithI18n: Wrap } = await import('./_withI18n');
+  await ready(['common', 'tenant']);
   const mod = await import('../../client-app/src/pages/Billing');
   const Billing = mod.default as React.ComponentType;
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <Billing />
-      </MemoryRouter>
-    </QueryClientProvider>,
+    <Wrap>
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Billing />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </Wrap>,
   );
 }
 
@@ -592,9 +596,12 @@ describe('Billing annual-savings callout', () => {
       expect(recommendationEventCalls.length).toBeGreaterThanOrEqual(1);
     });
 
+    // The card also records an impression on mount. Pin the click ping
+    // specifically — finding any upgrade-card source would match the
+    // impression first and fail eventType === 'click'.
     const upgradeCardPing = recommendationEventCalls.find((call) => {
-      const body = call.body as { metadata?: { source?: string } } | null;
-      return body?.metadata?.source === 'upgrade-card';
+      const body = call.body as { eventType?: string; metadata?: { source?: string } } | null;
+      return body?.eventType === 'click' && body?.metadata?.source === 'upgrade-card';
     });
     expect(upgradeCardPing).toBeTruthy();
 

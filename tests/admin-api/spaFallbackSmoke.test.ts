@@ -131,7 +131,7 @@ describe('spaFallback', () => {
         const app = express();
         attachSpaFallback(app, tmpDist);
 
-        const marketing = ['/', '/pricing', '/blog/some-post', '/docs/intro', '/case-studies', '/es/pricing'];
+        const marketing = ['/', '/pricing', '/demo', '/contact', '/case-studies', '/es/pricing', '/book-demo'];
         for (const url of marketing) {
           const r = await request(app).get(url).set('Accept', 'text/html');
           expect(r.status).toBe(200);

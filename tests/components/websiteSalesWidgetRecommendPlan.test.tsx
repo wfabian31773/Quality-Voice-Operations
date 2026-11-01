@@ -158,7 +158,7 @@ describe('WebsiteSalesWidget recommend_plan annual variant', () => {
       fireEvent.click(cta);
     });
     await waitFor(() =>
-      expect(lastNavigation).toBe('/signup?plan=pro&interval=annual'),
+      expect(lastNavigation).toBe('/book-demo?plan=pro&interval=annual'),
     );
   });
 
@@ -170,7 +170,7 @@ describe('WebsiteSalesWidget recommend_plan annual variant', () => {
     act(() => {
       fireEvent.click(cta);
     });
-    await waitFor(() => expect(lastNavigation).toBe('/signup?plan=pro'));
+    await waitFor(() => expect(lastNavigation).toBe('/book-demo?plan=pro'));
   });
 
   it('honors the Pricing-page annual selection on first render (no extra clicks)', async () => {
@@ -195,7 +195,7 @@ describe('WebsiteSalesWidget recommend_plan annual variant', () => {
       fireEvent.click(cta);
     });
     await waitFor(() =>
-      expect(lastNavigation).toBe('/signup?plan=pro&interval=annual'),
+      expect(lastNavigation).toBe('/book-demo?plan=pro&interval=annual'),
     );
   });
 
@@ -220,7 +220,7 @@ describe('WebsiteSalesWidget recommend_plan annual variant', () => {
       fireEvent.click(cta);
     });
     await waitFor(() =>
-      expect(lastNavigation).toBe('/signup?plan=pro&interval=annual'),
+      expect(lastNavigation).toBe('/book-demo?plan=pro&interval=annual'),
     );
   });
 });

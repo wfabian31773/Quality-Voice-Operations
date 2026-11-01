@@ -27,6 +27,12 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { randomUUID } from 'crypto';
 
+const dbUrl =
+  process.env.DATABASE_URL
+  || process.env.DATABASE_URL_PRIVILEGED
+  || process.env.PLATFORM_DB_POOL_URL
+  || '';
+
 // Stub only the two helpers that would hit a real provider / mailer on
 // success. Everything else (DB access, audit log writes, RBAC, auth) runs
 // against the real module graph via `importOriginal`. Hoisted by vitest so
@@ -187,7 +193,7 @@ async function fetchAuditRow(action: string): Promise<Record<string, unknown> | 
   });
 }
 
-describe('Platform connector quick-action endpoints (end-to-end)', () => {
+describe.skipIf(!dbUrl)('Platform connector quick-action endpoints (end-to-end)', () => {
   beforeAll(async () => {
     process.env.ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET ?? 'qvo-connector-health-e2e-secret';
 
