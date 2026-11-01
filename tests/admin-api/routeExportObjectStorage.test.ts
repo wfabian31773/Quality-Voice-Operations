@@ -168,6 +168,9 @@ describe.each([
   { backend: 's3 bucket=qvo-objects prefix=prod', use: () => useS3('qvo-objects', 'prod'), objectKey: `prod/${ARCHIVE_KEY}` },
   { backend: 's3 bucket=qvo-objects', use: () => useS3('qvo-objects'), objectKey: ARCHIVE_KEY },
   { backend: 'replit dir=/objects/private', use: () => useReplit('/objects/private'), objectKey: `objects/private/${ARCHIVE_KEY}` },
+  { backend: 'replit dir=/objects/private/', use: () => useReplit('/objects/private/'), objectKey: `objects/private/${ARCHIVE_KEY}` },
+  { backend: 'replit dir=/objects//', use: () => useReplit('/objects//'), objectKey: `objects//${ARCHIVE_KEY}` },
+  { backend: 'replit dir=/uploads', use: () => useReplit('/uploads'), objectKey: `uploads/${ARCHIVE_KEY}` },
   { backend: 'replit dir=/qvo-bucket/private', use: () => useReplit('/qvo-bucket/private'), objectKey: `qvo-bucket/private/${ARCHIVE_KEY}` },
 ])('route-export archive on $backend', ({ use, objectKey }) => {
   // Same call the export worker makes before saving archive_object_path.

@@ -75,6 +75,13 @@ export class ObjectStorageService {
     return this.adapterOverride ?? getStorageAdapter();
   }
 
+  /** The Replit adapter reads absolute paths, so entity paths resolve first. */
+  private storedObjectKey(adapter: StorageAdapter, objectPath: string): string {
+    return adapter instanceof ReplitSidecarStorage && isEntityObjectPath(objectPath)
+      ? adapter.getObjectEntityPath(objectPath)
+      : objectPath;
+  }
+
   getPublicObjectSearchPaths(): Array<string> {
     const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || '';
     const paths = Array.from(
@@ -157,23 +164,15 @@ export class ObjectStorageService {
       throw new ObjectNotFoundError();
     }
     const adapter = this.adapter();
-    if (!(await adapter.exists(objectPath))) {
+    const key = this.storedObjectKey(adapter, objectPath);
+    if (!(await adapter.exists(key))) {
       throw new ObjectNotFoundError();
     }
-    const handle = new AdapterObjectHandle(adapter, objectPath);
+    const handle = new AdapterObjectHandle(adapter, key);
     if (adapter instanceof ReplitSidecarStorage) {
-      // ACL helpers still speak GCS File; locate via a private-dir resolve.
+      // ACL helpers still speak GCS File.
       try {
-        const dir = process.env.PRIVATE_OBJECT_DIR || '';
-        if (dir && objectPath.startsWith('/objects/')) {
-          const entityId = objectPath.slice('/objects/'.length);
-          const fullPath = dir.endsWith('/') ? `${dir}${entityId}` : `${dir}/${entityId}`;
-          const path = fullPath.startsWith('/') ? fullPath.slice(1) : fullPath;
-          const parts = path.split('/');
-          if (parts.length >= 2) {
-            handle.gcsFile = objectStorageClient.bucket(parts[0]).file(parts.slice(1).join('/'));
-          }
-        }
+        handle.gcsFile = adapter.gcsFile(key);
       } catch {
         // ACL is best-effort on Replit; streaming still works without it.
       }
@@ -199,11 +198,11 @@ export class ObjectStorageService {
       // Malformed URLs from the client (bad percent-encoding and the like).
       throw new InvalidObjectPathError();
     }
-    if (!isCanonicalUploadObjectPath(normalizedPath)) {
-      throw new InvalidObjectPathError();
-    }
     if (adapter instanceof ReplitSidecarStorage) {
       return adapter.trySetAclPolicy(normalizedPath, aclPolicy);
+    }
+    if (!isCanonicalUploadObjectPath(normalizedPath)) {
+      throw new InvalidObjectPathError();
     }
     if (!(await adapter.exists(normalizedPath))) {
       throw new ObjectNotFoundError();
@@ -269,7 +268,7 @@ export class ObjectStorageService {
     res: Response,
     options?: StreamObjectOptions,
   ): Promise<void> {
-    await this.streamPrivateObject(objectPath, res, options);
+    await this.streamPrivateObject(this.storedObjectKey(this.adapter(), objectPath), res, options);
   }
 
   async canAccessObjectEntity({

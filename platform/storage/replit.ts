@@ -6,12 +6,7 @@ import {
   type ObjectAclPolicy,
 } from '../../server/replit_integrations/object_storage/objectAcl';
 import { InvalidObjectPathError, ObjectNotFoundError, StorageNotConfiguredError } from './errors';
-import {
-  isCanonicalUploadObjectPath,
-  isEntityObjectPath,
-  parseAbsoluteObjectPath,
-  stripLeadingSlashes,
-} from './paths';
+import { isCanonicalUploadObjectPath } from './paths';
 import type {
   PutObjectOptions,
   SignedUploadUrl,
@@ -39,8 +34,12 @@ export const objectStorageClient = new Storage({
   projectId: '',
 });
 
+// The path logic below is ported verbatim from main's objectStorage.ts and
+// voicePreview.ts so every key resolves to the object main resolved it to. Don't
+// tidy it up: objects already live under these exact keys, doubled slashes included.
+
 export function readReplitPrivateDir(env: Record<string, string | undefined> = process.env): string {
-  const dir = env.PRIVATE_OBJECT_DIR?.trim() ?? '';
+  const dir = env.PRIVATE_OBJECT_DIR || '';
   if (!dir) {
     throw new StorageNotConfiguredError(
       "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' tool and set PRIVATE_OBJECT_DIR env var.",
@@ -49,10 +48,34 @@ export function readReplitPrivateDir(env: Record<string, string | undefined> = p
   return dir;
 }
 
-function toFullPath(privateDir: string, relativeKey: string): string {
-  const cleanKey = stripLeadingSlashes(relativeKey);
-  if (!cleanKey) throw new Error('Invalid object key');
-  return privateDir.endsWith('/') ? `${privateDir}${cleanKey}` : `${privateDir}/${cleanKey}`;
+function parseObjectPath(path: string): {
+  bucketName: string;
+  objectName: string;
+} {
+  if (!path.startsWith('/')) {
+    path = `/${path}`;
+  }
+  const pathParts = path.split('/');
+  if (pathParts.length < 3) {
+    throw new Error('Invalid path: must contain at least a bucket name');
+  }
+
+  const bucketName = pathParts[1];
+  const objectName = pathParts.slice(2).join('/');
+
+  return {
+    bucketName,
+    objectName,
+  };
+}
+
+/** Voice-preview cache keys, the only relative keys read back through the adapter. */
+const VOICE_PREVIEW_KEY = /^voice-previews\/[^/]+$/;
+
+/** main's voicePreview getObjectLocation, which trimmed the private dir itself. */
+function voicePreviewFullPath(dir: string, key: string): string {
+  const trimmed = dir.replace(/\/+$/, '');
+  return `${trimmed}/${key}`;
 }
 
 async function signObjectURL({
@@ -94,58 +117,74 @@ export class ReplitSidecarStorage implements StorageAdapter {
     private readonly client: Storage = objectStorageClient,
   ) {}
 
-  /** `/<bucket>/<dir>`, whatever slashes PRIVATE_OBJECT_DIR was written with. */
-  private privateDir(): string {
-    return `/${stripLeadingSlashes(readReplitPrivateDir(this.env)).replace(/\/+$/, '')}`;
+  /** main's getPrivateObjectDir. */
+  private getPrivateObjectDir(): string {
+    return readReplitPrivateDir(this.env);
   }
 
   /**
-   * Main joined entity ids onto PRIVATE_OBJECT_DIR verbatim, so a dir ending in
-   * `/` uploaded to `<dir>//uploads/<id>` and saved `/objects//uploads/<id>`.
-   * Those saved paths keep resolving to that exact key.
+   * The `/<bucket>/<object>` path main's getObjectEntityFile resolved an
+   * `/objects/<id>` path to. Read operations take absolute paths, so callers
+   * holding an entity path translate it here first: under a bucket named
+   * `objects` the same string means something else as an absolute path.
    */
-  private legacyEntityPath(key: string): string | null {
-    const entityId = key.slice('/objects/'.length);
-    if (!entityId.startsWith('/') || !stripLeadingSlashes(entityId)) return null;
-    const rawDir = readReplitPrivateDir(this.env);
-    return rawDir.endsWith('/') ? `/${stripLeadingSlashes(rawDir)}${entityId}` : null;
+  getObjectEntityPath(objectPath: string): string {
+    if (!objectPath.startsWith('/objects/')) {
+      throw new ObjectNotFoundError();
+    }
+
+    const parts = objectPath.slice(1).split('/');
+    if (parts.length < 2) {
+      throw new ObjectNotFoundError();
+    }
+
+    const entityId = parts.slice(1).join('/');
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith('/')) {
+      entityDir = `${entityDir}/`;
+    }
+    return `${entityDir}${entityId}`;
   }
 
-  private locate(key: string): { bucketName: string; objectName: string; fullPath: string } {
-    if (isEntityObjectPath(key)) {
-      const legacyPath = this.legacyEntityPath(key);
-      if (legacyPath) return this.locateAbsolute(legacyPath);
-      const dir = this.privateDir();
-      // A bucket named "objects" makes put() paths look like entity paths. Those
-      // are already absolute; only `/objects/uploads/<id>` is always an entity.
-      if (key.startsWith(`${dir}/`) && !isCanonicalUploadObjectPath(key)) {
-        return this.locateAbsolute(key);
-      }
-      return this.locateAbsolute(toFullPath(dir, key.slice('/objects/'.length)));
-    }
-    if (key.startsWith('/')) {
-      return this.locateAbsolute(key);
-    }
-    const dir = this.privateDir();
-    // Already under the private dir, just missing its leading slash.
-    if (`/${key}`.startsWith(`${dir}/`)) {
-      return this.locateAbsolute(`/${key}`);
-    }
-    return this.locateAbsolute(toFullPath(dir, key));
+  /** main's uploadPrivateObject join, or its voice-preview one for those keys. */
+  private uploadFullPath(relativeKey: string): string {
+    const dir = this.getPrivateObjectDir();
+    if (VOICE_PREVIEW_KEY.test(relativeKey)) return voicePreviewFullPath(dir, relativeKey);
+    const cleanKey = relativeKey.replace(/^\/+/, '');
+    return dir.endsWith('/') ? `${dir}${cleanKey}` : `${dir}/${cleanKey}`;
   }
 
-  private locateAbsolute(fullPath: string): {
-    bucketName: string;
-    objectName: string;
-    fullPath: string;
-  } {
-    const parsed = parseAbsoluteObjectPath(fullPath);
-    if (!parsed.objectName) throw new Error('Invalid object key');
-    return { ...parsed, fullPath };
+  /** Reads take what main's streamPrivateObject / deletePrivateObject took. */
+  private locate(key: string): { bucketName: string; objectName: string } {
+    if (VOICE_PREVIEW_KEY.test(key)) {
+      return parseObjectPath(voicePreviewFullPath(this.getPrivateObjectDir(), key));
+    }
+    return parseObjectPath(key);
+  }
+
+  /** GCS handle for the ACL helpers. */
+  gcsFile(key: string) {
+    const { bucketName, objectName } = this.locate(key);
+    return this.client.bucket(bucketName).file(objectName);
+  }
+
+  /**
+   * Upload paths a client may attach. Besides the canonical shape, a dir ending
+   * in `/` signs `<dir>//uploads/<id>`, which main normalized to
+   * `/objects//uploads/<id>`.
+   */
+  isUploadEntityPath(path: string): boolean {
+    if (isCanonicalUploadObjectPath(path)) return true;
+    return (
+      path.startsWith('/objects//') &&
+      isCanonicalUploadObjectPath(`/objects/${path.slice('/objects//'.length)}`) &&
+      this.getPrivateObjectDir().endsWith('/')
+    );
   }
 
   async put(key: string, body: Buffer | string, options?: PutObjectOptions): Promise<string> {
-    const { bucketName, objectName, fullPath } = this.locate(key);
+    const fullPath = this.uploadFullPath(key);
+    const { bucketName, objectName } = parseObjectPath(fullPath);
     const file = this.client.bucket(bucketName).file(objectName);
     await file.save(body, {
       contentType: options?.contentType,
@@ -216,7 +255,10 @@ export class ReplitSidecarStorage implements StorageAdapter {
   }
 
   async getSignedUploadUrl(key: string, ttlSec: number): Promise<SignedUploadUrl> {
-    const { bucketName, objectName } = this.locate(key);
+    // main's getObjectEntityUploadURL always joined with `/`, even onto a dir
+    // already ending in one.
+    const fullPath = `${this.getPrivateObjectDir()}/${key}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
     const url = await signObjectURL({
       bucketName,
       objectName,
@@ -225,7 +267,7 @@ export class ReplitSidecarStorage implements StorageAdapter {
     });
     return {
       url,
-      objectPath: this.normalizeObjectPath(url) || `/objects/${stripLeadingSlashes(key)}`,
+      objectPath: this.normalizeObjectPath(url),
     };
   }
 
@@ -233,20 +275,29 @@ export class ReplitSidecarStorage implements StorageAdapter {
     if (!rawPath.startsWith('https://storage.googleapis.com/')) {
       return rawPath;
     }
+
+    // Extract the path from the URL by removing query parameters and domain
     const url = new URL(rawPath);
     const rawObjectPath = url.pathname;
-    const objectEntityDir = `${this.privateDir()}/`;
+
+    let objectEntityDir = this.getPrivateObjectDir();
+    if (!objectEntityDir.endsWith('/')) {
+      objectEntityDir = `${objectEntityDir}/`;
+    }
+
     if (!rawObjectPath.startsWith(objectEntityDir)) {
       return rawObjectPath;
     }
-    return `/objects/${rawObjectPath.slice(objectEntityDir.length)}`;
+
+    // Extract the entity ID from the path
+    const entityId = rawObjectPath.slice(objectEntityDir.length);
+    return `/objects/${entityId}`;
   }
 
   async trySetAclPolicy(rawPath: string, aclPolicy: ObjectAclPolicy): Promise<string> {
     const normalizedPath = this.normalizeObjectPath(rawPath);
-    if (!isCanonicalUploadObjectPath(normalizedPath)) throw new InvalidObjectPathError();
-    const { bucketName, objectName } = this.locate(normalizedPath);
-    const file = this.client.bucket(bucketName).file(objectName);
+    if (!this.isUploadEntityPath(normalizedPath)) throw new InvalidObjectPathError();
+    const file = this.gcsFile(this.getObjectEntityPath(normalizedPath));
     const [exists] = await file.exists();
     if (!exists) throw new ObjectNotFoundError();
     await setObjectAclPolicy(file, aclPolicy);
