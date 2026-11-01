@@ -397,6 +397,129 @@ describe('ReplitSidecarStorage (mocked client)', () => {
     });
   });
 
+  describe('uploads saved by main under a trailing-slash PRIVATE_OBJECT_DIR', () => {
+    function inMemoryBucket() {
+      const objects = new Map<string, Buffer>();
+      const missing = () => Object.assign(new Error('missing'), { code: 404 });
+      const file = (name: string) => ({
+        save: async (body: Buffer | string) => {
+          objects.set(name, Buffer.from(body));
+        },
+        exists: async () => [objects.has(name)],
+        download: async () => {
+          const stored = objects.get(name);
+          if (!stored) throw missing();
+          return [stored];
+        },
+        getMetadata: async () => {
+          const stored = objects.get(name);
+          if (!stored) throw missing();
+          return [{ contentType: 'image/png', size: stored.length }];
+        },
+        createReadStream: () => Readable.from([objects.get(name) as Buffer]),
+        delete: async () => {
+          if (!objects.delete(name)) throw missing();
+        },
+      });
+      return { objects, client: { bucket: () => ({ file }) } as never };
+    }
+
+    /** What main's getObjectEntityUploadURL + normalizeObjectEntityPath produced. */
+    function mainUpload(privateDir: string, id: string) {
+      const uploadPath = `${privateDir}/uploads/${id}`;
+      return {
+        objectName: uploadPath.split('/').slice(2).join('/'),
+        savedPath: `/objects/${uploadPath.slice(privateDir.length)}`,
+      };
+    }
+
+    async function readStream(stream: Readable) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+      return Buffer.concat(chunks).toString();
+    }
+
+    describe.each([
+      { privateDir: '/objects/private/', objectName: 'private//uploads/u1' },
+      { privateDir: '/qvo-bucket/private/', objectName: 'private//uploads/u1' },
+      { privateDir: '/qvo-bucket/private//', objectName: 'private///uploads/u1' },
+    ])('with PRIVATE_OBJECT_DIR=$privateDir', ({ privateDir, objectName }) => {
+      it('resolves the legacy object on every operation', async () => {
+        const legacy = mainUpload(privateDir, 'u1');
+        expect(legacy.objectName).toBe(objectName);
+        expect(legacy.savedPath).toBe('/objects//uploads/u1');
+
+        const { objects, client } = inMemoryBucket();
+        objects.set(objectName, Buffer.from('legacy'));
+        const adapter = new ReplitSidecarStorage({ PRIVATE_OBJECT_DIR: privateDir }, client);
+        const bucketName = privateDir.split('/')[1];
+        const signedUrl = `https://storage.googleapis.com/${bucketName}/${objectName}?sig=x`;
+        const fetchSpy = vi
+          .spyOn(globalThis, 'fetch')
+          .mockResolvedValue(new Response(JSON.stringify({ signed_url: signedUrl })));
+        try {
+          expect(await adapter.exists(legacy.savedPath)).toBe(true);
+          expect((await adapter.get(legacy.savedPath)).toString()).toBe('legacy');
+          expect(await adapter.getMetadata(legacy.savedPath)).toEqual({ contentType: 'image/png', size: 6 });
+          expect(await readStream(await adapter.createReadStream(legacy.savedPath))).toBe('legacy');
+
+          const handle = await new ObjectStorageService(adapter).getObjectEntityFile(legacy.savedPath);
+          expect((await handle.download())[0].toString()).toBe('legacy');
+
+          await adapter.getSignedUploadUrl(legacy.savedPath, 60);
+          expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toMatchObject({
+            bucket_name: bucketName,
+            object_name: objectName,
+          });
+
+          expect(await adapter.delete(legacy.savedPath)).toBe(true);
+          expect(objects.size).toBe(0);
+          expect(await adapter.exists(legacy.savedPath)).toBe(false);
+        } finally {
+          fetchSpy.mockRestore();
+        }
+      });
+
+      it('keeps legacy and new objects with the same id apart', async () => {
+        const { objects, client } = inMemoryBucket();
+        objects.set(objectName, Buffer.from('legacy'));
+        const adapter = new ReplitSidecarStorage({ PRIVATE_OBJECT_DIR: privateDir }, client);
+
+        const stored = await adapter.put(storageKeys.upload('u1'), Buffer.from('new'));
+
+        expect((await adapter.get('/objects//uploads/u1')).toString()).toBe('legacy');
+        expect((await adapter.get('/objects/uploads/u1')).toString()).toBe('new');
+        expect((await adapter.get(stored)).toString()).toBe('new');
+        expect(objects.size).toBe(2);
+      });
+
+      it('round-trips new writes through a single-slash key', async () => {
+        const { objects, client } = inMemoryBucket();
+        const adapter = new ReplitSidecarStorage({ PRIVATE_OBJECT_DIR: privateDir }, client);
+        const bucketName = privateDir.split('/')[1];
+
+        const stored = await adapter.put(storageKeys.upload('u2'), Buffer.from('new'));
+
+        expect(stored).toBe(`/${bucketName}/private/uploads/u2`);
+        expect([...objects.keys()]).toEqual(['private/uploads/u2']);
+        expect((await adapter.get(stored)).toString()).toBe('new');
+        expect((await adapter.get('/objects/uploads/u2')).toString()).toBe('new');
+        expect(await adapter.delete(stored)).toBe(true);
+      });
+    });
+
+    it('leaves dirs without a trailing slash on the collapsed key', async () => {
+      const { adapter, file } = replitAdapter('/qvo-bucket/private');
+      await adapter.get('/objects//uploads/u1');
+      expect(file).toHaveBeenCalledWith('private/uploads/u1');
+    });
+
+    it('still refuses an empty entity id', async () => {
+      const { adapter } = replitAdapter('/qvo-bucket/private/');
+      await expect(adapter.exists('/objects//')).rejects.toThrow(/Invalid object key/);
+    });
+  });
+
   it('reads /objects/private/... as an entity path under other buckets', async () => {
     const { adapter, bucket, file } = replitAdapter('/qvo-bucket/private');
     await adapter.get('/objects/private/a');

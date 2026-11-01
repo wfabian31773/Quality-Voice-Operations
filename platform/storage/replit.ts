@@ -99,8 +99,22 @@ export class ReplitSidecarStorage implements StorageAdapter {
     return `/${stripLeadingSlashes(readReplitPrivateDir(this.env)).replace(/\/+$/, '')}`;
   }
 
+  /**
+   * Main joined entity ids onto PRIVATE_OBJECT_DIR verbatim, so a dir ending in
+   * `/` uploaded to `<dir>//uploads/<id>` and saved `/objects//uploads/<id>`.
+   * Those saved paths keep resolving to that exact key.
+   */
+  private legacyEntityPath(key: string): string | null {
+    const entityId = key.slice('/objects/'.length);
+    if (!entityId.startsWith('/') || !stripLeadingSlashes(entityId)) return null;
+    const rawDir = readReplitPrivateDir(this.env);
+    return rawDir.endsWith('/') ? `/${stripLeadingSlashes(rawDir)}${entityId}` : null;
+  }
+
   private locate(key: string): { bucketName: string; objectName: string; fullPath: string } {
     if (isEntityObjectPath(key)) {
+      const legacyPath = this.legacyEntityPath(key);
+      if (legacyPath) return this.locateAbsolute(legacyPath);
       const dir = this.privateDir();
       // A bucket named "objects" makes put() paths look like entity paths. Those
       // are already absolute; only `/objects/uploads/<id>` is always an entity.

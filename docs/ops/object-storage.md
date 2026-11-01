@@ -107,4 +107,4 @@ After a bucket exists, set the S3 names on `qvo-api`, `qvo-voice` (preview
 cache), and `qvo-worker` (route-export cleanup) and restart. No code change
 is required.
 
-- Deferred edge case (PR #165 Codex P2): if `PRIVATE_OBJECT_DIR` was set with a trailing slash (e.g. `/objects/private/`), main saved uploads as `/objects//uploads/<id>` (key `private//uploads/<id>`); this adapter collapses the doubled slash, so those legacy uploads would not resolve. No QVO Render service sets `PRIVATE_OBJECT_DIR` (checked 2026-11-01), so this is not fixed here.
+- Legacy uploads: when `PRIVATE_OBJECT_DIR` ends in `/`, saved `/objects//uploads/<id>` paths still resolve to their exact doubled-slash key (`private//uploads/<id>`); new writes use `private/uploads/<id>`.
