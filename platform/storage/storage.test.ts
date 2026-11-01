@@ -506,6 +506,27 @@ describe('S3CompatibleStorage (real SDK presigner, no network)', () => {
     expect(params.filter((name) => name.startsWith('x-amz-checksum-'))).toEqual([]);
     expect(params).not.toContain('x-amz-sdk-checksum-algorithm');
   });
+
+  it.each([
+    { bucket: 'objects', prefix: 'prod', stored: '/objects/uploads/u1', objectKey: 'prod/uploads/u1' },
+    { bucket: 'objects', prefix: undefined, stored: '/objects/uploads/u1', objectKey: 'uploads/u1' },
+    { bucket: 'qvo-objects', prefix: 'prod', stored: '/qvo-objects/prod/uploads/u1', objectKey: 'prod/uploads/u1' },
+    { bucket: 'qvo-objects', prefix: undefined, stored: '/qvo-objects/uploads/u1', objectKey: 'uploads/u1' },
+  ])('signs $stored once under bucket=$bucket prefix=$prefix', async ({ bucket, prefix, stored, objectKey }) => {
+    const adapter = createS3StorageAdapter({
+      S3_BUCKET: bucket,
+      S3_PREFIX: prefix,
+      S3_ACCESS_KEY_ID: 'AKIAEXAMPLE',
+      S3_SECRET_ACCESS_KEY: 'secret',
+      S3_ENDPOINT: 'http://localhost:9000',
+    });
+    for (const key of [storageKeys.upload('u1'), stored, '/objects/uploads/u1']) {
+      const signed = await adapter.getSignedUploadUrl(key, 60);
+      expect(new URL(signed.url).pathname).toBe(`/${bucket}/${objectKey}`);
+      expect(signed.objectPath).toBe('/objects/uploads/u1');
+      expect(adapter.normalizeObjectPath(signed.url)).toBe('/objects/uploads/u1');
+    }
+  });
 });
 
 describe('S3CompatibleStorage (mocked SDK)', () => {
@@ -538,6 +559,63 @@ describe('S3CompatibleStorage (mocked SDK)', () => {
     expect(await adapter.delete(stored)).toBe(true);
     expect(await adapter.exists(stored)).toBe(false);
     expect(send).toHaveBeenCalled();
+  });
+
+  function inMemoryS3() {
+    const objects = new Map<string, Buffer>();
+    const missing = () => Object.assign(new Error('missing'), { name: 'NotFound', $metadata: { httpStatusCode: 404 } });
+    const send = vi.fn(async (command: { constructor: { name: string }; input: { Key: string; Body?: Buffer } }) => {
+      const { Key, Body } = command.input;
+      if (command.constructor.name === 'PutObjectCommand') {
+        objects.set(Key, Body as Buffer);
+        return {};
+      }
+      const stored = objects.get(Key);
+      if (!stored) throw missing();
+      if (command.constructor.name === 'DeleteObjectCommand') objects.delete(Key);
+      if (command.constructor.name === 'GetObjectCommand') {
+        return { Body: Object.assign(Readable.from([stored]), { transformToByteArray: async () => stored }) };
+      }
+      return { ContentLength: stored.length };
+    });
+    return { objects, send };
+  }
+
+  it.each([
+    { bucket: 'objects', prefix: 'prod', stored: '/objects/uploads/u1', objectKey: 'prod/uploads/u1' },
+    { bucket: 'objects', prefix: 'tenants/prod', stored: '/objects/uploads/u1', objectKey: 'tenants/prod/uploads/u1' },
+    // A prefix equal to a key namespace must not read as "already prefixed".
+    { bucket: 'objects', prefix: 'uploads', stored: '/objects/uploads/u1', objectKey: 'uploads/uploads/u1' },
+    { bucket: 'objects', prefix: undefined, stored: '/objects/uploads/u1', objectKey: 'uploads/u1' },
+    { bucket: 'qvo-objects', prefix: 'prod', stored: '/qvo-objects/prod/uploads/u1', objectKey: 'prod/uploads/u1' },
+    { bucket: 'qvo-objects', prefix: undefined, stored: '/qvo-objects/uploads/u1', objectKey: 'uploads/u1' },
+  ])('round-trips a put path under bucket=$bucket prefix=$prefix', async ({ bucket, prefix, stored, objectKey }) => {
+    const { objects, send } = inMemoryS3();
+    const adapter = createS3StorageAdapter(
+      { S3_BUCKET: bucket, S3_PREFIX: prefix, S3_ACCESS_KEY_ID: 'id', S3_SECRET_ACCESS_KEY: 'secret' },
+      { send } as never,
+    );
+
+    expect(await adapter.put(storageKeys.upload('u1'), Buffer.from('ab'))).toBe(stored);
+    expect([...objects.keys()]).toEqual([objectKey]);
+
+    for (const key of [stored, '/objects/uploads/u1', storageKeys.upload('u1')]) {
+      expect(await adapter.exists(key)).toBe(true);
+      expect(await adapter.get(key)).toEqual(Buffer.from('ab'));
+      expect((await adapter.getMetadata(key)).size).toBe(2);
+      const chunks: Buffer[] = [];
+      for await (const chunk of await adapter.createReadStream(key)) chunks.push(Buffer.from(chunk));
+      expect(Buffer.concat(chunks)).toEqual(Buffer.from('ab'));
+    }
+
+    // Writing back to the stored path hits the same object.
+    expect(await adapter.put(stored, Buffer.from('cd'))).toBe(stored);
+    expect([...objects.keys()]).toEqual([objectKey]);
+
+    expect(await adapter.delete(stored)).toBe(true);
+    expect(objects.size).toBe(0);
+    expect(await adapter.exists(stored)).toBe(false);
+    expect(await adapter.delete(stored)).toBe(false);
   });
 
   it('normalizes a Supabase-style presigned URL to /objects/<key>', () => {

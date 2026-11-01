@@ -82,7 +82,9 @@ Every product write uses `storageKeys` in `platform/storage/keys.ts`:
 | Knowledge PDF (when persisted to object storage) | `knowledge/<tenantId>/<documentId>.pdf` |
 
 Persistable paths returned by `put` are `/<bucket>/<object>`. Upload flows
-also use `/objects/<entityId>`. Both resolve through the same adapter.
+also use `/objects/<entityId>`. Both resolve through the same adapter. The one
+exception is `S3_BUCKET=objects`, where `put` returns `/objects/<key>` without
+`S3_PREFIX`, because that shape always reads back as an entity path.
 
 Dispatch attachments accept only an `object_path` that normalizes to
 `/objects/uploads/<id>` and that exists in storage; anything else is a 400.

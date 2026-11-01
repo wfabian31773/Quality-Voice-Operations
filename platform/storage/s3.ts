@@ -91,7 +91,15 @@ export class S3CompatibleStorage implements StorageAdapter {
     return this.withPrefix(key);
   }
 
+  private withoutPrefix(objectKey: string): string {
+    const { prefix } = this.config;
+    return prefix && objectKey.startsWith(`${prefix}/`) ? objectKey.slice(prefix.length + 1) : objectKey;
+  }
+
   private persistablePath(objectKey: string): string {
+    // `/objects/...` always reads back as an entity path, which gets the prefix
+    // added, so a bucket named "objects" has to persist the unprefixed key.
+    if (this.config.bucket === 'objects') return `/objects/${this.withoutPrefix(objectKey)}`;
     return joinObjectPath(this.config.bucket, objectKey);
   }
 
@@ -185,7 +193,7 @@ export class S3CompatibleStorage implements StorageAdapter {
     );
     return {
       url,
-      objectPath: `/objects/${stripLeadingSlashes(key.startsWith('/objects/') ? key.slice('/objects/'.length) : stripLeadingSlashes(key))}`,
+      objectPath: `/objects/${this.withoutPrefix(objectKey)}`,
     };
   }
 
