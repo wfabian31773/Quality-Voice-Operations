@@ -116,6 +116,7 @@ describe('Signup CAPTCHA gating', () => {
     renderSignup();
 
     await waitFor(() => expect(turnstile.render).toHaveBeenCalledTimes(1));
+    expect(turnstile.render.mock.calls[0][1]).toMatchObject({ action: 'signup' });
     solve('token-1');
 
     fireEvent.change(screen.getByLabelText(/organization name/i), { target: { value: 'Acme' } });

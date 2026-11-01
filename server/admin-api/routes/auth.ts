@@ -12,20 +12,19 @@ import { isSupportedBillingCurrency } from '../../../platform/billing/supportedC
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
 import { authAttemptRateLimitMax } from '../../../platform/security/authAttemptRateLimit';
+import {
+  TURNSTILE_ACTIONS,
+  publicTurnstileSiteKey,
+  turnstileClientIp,
+  turnstileSecret,
+  verifyTurnstile,
+} from '../../../platform/security/turnstile';
 
 const router = Router();
 const logger = createLogger('ADMIN_AUTH_ROUTES');
 
 const VALID_PLANS = new Set<string>(['starter', 'pro', 'enterprise']);
 const VALID_INTERVALS = new Set<string>(['monthly', 'annual']);
-
-function turnstileSecret(): string {
-  return (process.env.TURNSTILE_SECRET_KEY || '').trim();
-}
-
-function publicTurnstileSiteKey(): string {
-  return (process.env.TURNSTILE_SITE_KEY || process.env.VITE_TURNSTILE_SITE_KEY || '').trim();
-}
 const loginRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   // Admin e2e walks many specs against one seeded admin on a single
@@ -39,34 +38,6 @@ const loginRateLimit = createRateLimiter({
     return `${req.ip ?? req.socket?.remoteAddress ?? 'unknown'}:${email}`;
   },
 });
-
-async function verifyTurnstileToken(token: string, ip: string): Promise<boolean> {
-  const secret = turnstileSecret();
-  if (!secret) {
-    // Documented local/dev bypass. Production startup requires
-    // TURNSTILE_SECRET_KEY (assertProductionSecrets), so this skip
-    // cannot ship accidentally.
-    logger.warn('TURNSTILE_SECRET_KEY not configured — skipping CAPTCHA verification');
-    return true;
-  }
-
-  try {
-    const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        secret,
-        response: token,
-        remoteip: ip,
-      }),
-    });
-    const data = await response.json() as { success: boolean };
-    return data.success === true;
-  } catch (err) {
-    logger.error('Turnstile verification failed', { error: String(err) });
-    return false;
-  }
-}
 
 router.post('/auth/login', loginRateLimit, async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
@@ -235,17 +206,13 @@ router.post('/auth/signup', async (req, res) => {
     return res.status(400).json({ error: `interval must be one of: ${[...VALID_INTERVALS].join(', ')}` });
   }
 
-  if (turnstileSecret() && !captchaToken) {
-    return res.status(400).json({ error: 'CAPTCHA verification is required' });
-  }
-
-  if (captchaToken) {
-    const forwarded = req.headers['x-forwarded-for'];
-    const ip = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req.socket?.remoteAddress ?? '';
-    const captchaValid = await verifyTurnstileToken(captchaToken, ip);
-    if (!captchaValid) {
-      return res.status(400).json({ error: 'CAPTCHA verification failed. Please try again.' });
-    }
+  const captcha = await verifyTurnstile({
+    token: captchaToken,
+    ip: turnstileClientIp(req),
+    expectedAction: TURNSTILE_ACTIONS.signup,
+  });
+  if (!captcha.ok) {
+    return res.status(captcha.status).json({ error: captcha.error });
   }
 
   const pool = getPrivilegedPool();

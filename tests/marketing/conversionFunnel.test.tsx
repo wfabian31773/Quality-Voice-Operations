@@ -634,6 +634,12 @@ describe('Marketing conversion funnel: Book a Demo form', () => {
         body = JSON.parse(init.body);
       }
       fetchCalls.push({ url, method, body });
+      if (url === '/api/auth/signup-config') {
+        return new Response(JSON.stringify({ captchaRequired: false, siteKey: null }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       if (url === '/api/book-demo' && method === 'POST') {
         return new Response(JSON.stringify({ success: true }), {
           status: 200,
@@ -651,6 +657,9 @@ describe('Marketing conversion funnel: Book a Demo form', () => {
 
     const form = container.querySelector('form');
     expect(form, 'BookDemo should render a form').toBeTruthy();
+    await waitFor(() => {
+      expect((container.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(false);
+    });
 
     const fields = fillBookDemoForm(form!, {
       name: 'Ada Lovelace',
@@ -705,6 +714,12 @@ describe('Marketing conversion funnel: Book a Demo form', () => {
         body = JSON.parse(init.body);
       }
       fetchCalls.push({ url, method, body });
+      if (url === '/api/auth/signup-config') {
+        return new Response(JSON.stringify({ captchaRequired: false, siteKey: null }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       if (url === '/api/book-demo' && method === 'POST') {
         return new Response(
           JSON.stringify({ error: 'Email is already on the waitlist.' }),
@@ -721,6 +736,9 @@ describe('Marketing conversion funnel: Book a Demo form', () => {
     );
 
     const form = container.querySelector('form')!;
+    await waitFor(() => {
+      expect((container.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(false);
+    });
     fillBookDemoForm(form, {
       name: 'Grace Hopper',
       email: 'grace@example.com',

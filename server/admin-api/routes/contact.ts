@@ -15,6 +15,11 @@ import {
   getActiveCalendlyWebhookSecret,
   getPublicDemoSchedulerConfig,
 } from '../services/demo-scheduler-settings';
+import {
+  TURNSTILE_ACTIONS,
+  turnstileClientIp,
+  verifyTurnstile,
+} from '../../../platform/security/turnstile';
 
 const logger = createLogger('CONTACT');
 
@@ -53,7 +58,7 @@ router.post('/contact', async (req: Request, res: Response) => {
 });
 
 router.post('/book-demo', async (req: Request, res: Response) => {
-  const { name, email, company, phone, teamSize, useCase, preferredTime } = req.body ?? {};
+  const { name, email, company, phone, teamSize, useCase, preferredTime, captchaToken } = req.body ?? {};
 
   if (!name || !email || !company) {
     res.status(400).json({ error: 'Name, email, and company are required' });
@@ -61,6 +66,16 @@ router.post('/book-demo', async (req: Request, res: Response) => {
   }
   if (!emailRegex.test(email)) {
     res.status(400).json({ error: 'Invalid email address' });
+    return;
+  }
+
+  const captcha = await verifyTurnstile({
+    token: typeof captchaToken === 'string' ? captchaToken : undefined,
+    ip: turnstileClientIp(req),
+    expectedAction: TURNSTILE_ACTIONS.bookDemo,
+  });
+  if (!captcha.ok) {
+    res.status(captcha.status).json({ error: captcha.error });
     return;
   }
 
