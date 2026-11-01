@@ -71,6 +71,13 @@ function resetEnv(): void {
   delete process.env.STRIPE_PRICE_ENTERPRISE_AI_MINUTES;
   delete process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY;
   delete process.env.QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION;
+  delete process.env.OBJECT_STORAGE_PROVIDER;
+  delete process.env.S3_BUCKET;
+  delete process.env.S3_ACCESS_KEY_ID;
+  delete process.env.S3_SECRET_ACCESS_KEY;
+  delete process.env.S3_ENDPOINT;
+  delete process.env.OBJECT_STORAGE_LOCAL_DIR;
+  delete process.env.PRIVATE_OBJECT_DIR;
   // Cloud / sandbox hosts may export Azul-owned names. validate-env warns
   // on those, so isolate them from the "healthy production" assertion.
   delete process.env.SUPABASE_DATABASE_URL;
@@ -449,6 +456,45 @@ describe('validateEnvironment() — warnings', () => {
     const result = validateEnvironment();
 
     expect(result.warnings.some(w => w.includes('PLATFORM_DB_POOL_URL'))).toBe(true);
+  });
+
+  it('warns when OBJECT_STORAGE_PROVIDER=s3 but S3 credentials are missing (does not fail boot)', async () => {
+    applyAllProductionVars();
+    process.env.OBJECT_STORAGE_PROVIDER = 's3';
+    delete process.env.S3_BUCKET;
+    delete process.env.S3_ACCESS_KEY_ID;
+    delete process.env.S3_SECRET_ACCESS_KEY;
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.passed).toBe(true);
+    expect(result.warnings.some(w => w.includes('S3_BUCKET') && w.includes('OBJECT_STORAGE_PROVIDER=s3'))).toBe(true);
+    expect(result.warnings.some(w => w.includes('S3_ACCESS_KEY_ID'))).toBe(true);
+    expect(result.warnings.some(w => w.includes('S3_SECRET_ACCESS_KEY'))).toBe(true);
+    expect(result.warnings.join('\n')).not.toMatch(/sk_live|AKIA/);
+  });
+
+  it('warns on an unknown OBJECT_STORAGE_PROVIDER without printing its value (does not fail boot)', async () => {
+    applyAllProductionVars();
+    process.env.OBJECT_STORAGE_PROVIDER = 'hunter2-value';
+    const logSpy = vi.spyOn(console, 'log');
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.passed).toBe(true);
+    expect(result.warnings.some(w => w.includes('OBJECT_STORAGE_PROVIDER must be one of'))).toBe(true);
+    expect(result.warnings.join('\n')).not.toContain('hunter2-value');
+    expect(logSpy.mock.calls.flat().join('\n')).not.toContain('hunter2-value');
+    logSpy.mockRestore();
+  });
+
+  it('does not warn on the disk alias for OBJECT_STORAGE_PROVIDER', async () => {
+    applyAllProductionVars();
+    process.env.OBJECT_STORAGE_PROVIDER = 'disk';
+    const { validateEnvironment } = await loadValidator();
+    const result = validateEnvironment();
+
+    expect(result.warnings.some(w => w.includes('OBJECT_STORAGE_PROVIDER'))).toBe(false);
   });
 
   it('warns when CONNECTOR_ENCRYPTION_KEY is shorter than 64 hex chars', async () => {

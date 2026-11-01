@@ -1,320 +1,256 @@
-import { Storage, File } from "@google-cloud/storage";
-import { Response } from "express";
-import { randomUUID } from "crypto";
+import type { Response } from 'express';
+import { randomUUID } from 'crypto';
+import type { File } from '@google-cloud/storage';
+import type { Readable } from 'node:stream';
 import {
-  ObjectAclPolicy,
-  ObjectPermission,
+  InvalidObjectPathError,
+  ObjectNotFoundError,
+  getStorageAdapter,
+  isCanonicalUploadObjectPath,
+  isEntityObjectPath,
+  isObjectStorageConfigured,
+  objectStorageClient,
+  readReplitPrivateDir,
+  storageKeys,
+  type StorageAdapter,
+  type StreamObjectOptions,
+} from '../../../platform/storage';
+import { ReplitSidecarStorage } from '../../../platform/storage/replit';
+import {
   canAccessObject,
   getObjectAclPolicy,
-  setObjectAclPolicy,
-} from "./objectAcl";
+  ObjectPermission,
+  type ObjectAclPolicy,
+} from './objectAcl';
 
-const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
+export { ObjectNotFoundError, objectStorageClient };
 
-// The object storage client is used to interact with the object storage service.
-export const objectStorageClient = new Storage({
-  credentials: {
-    audience: "replit",
-    subject_token_type: "access_token",
-    token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
-    type: "external_account",
-    credential_source: {
-      url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
-      format: {
-        type: "json",
-        subject_token_field_name: "access_token",
-      },
-    },
-    universe_domain: "googleapis.com",
-  },
-  projectId: "",
-});
+export interface StorageObjectHandle {
+  exists(): Promise<[boolean]>;
+  getMetadata(): Promise<[{ contentType?: string; size?: string | number }]>;
+  createReadStream(): Readable | Promise<Readable>;
+  download(): Promise<[Buffer]>;
+  /** Present only for the Replit sidecar so existing ACL helpers keep working. */
+  gcsFile?: File;
+}
 
-export class ObjectNotFoundError extends Error {
-  constructor() {
-    super("Object not found");
-    this.name = "ObjectNotFoundError";
-    Object.setPrototypeOf(this, ObjectNotFoundError.prototype);
+/** What backends report when an object was stored without a content type. */
+const GENERIC_CONTENT_TYPES = new Set(['application/octet-stream', 'binary/octet-stream']);
+
+class AdapterObjectHandle implements StorageObjectHandle {
+  gcsFile?: File;
+
+  constructor(
+    private readonly adapter: StorageAdapter,
+    private readonly key: string,
+  ) {}
+
+  async exists(): Promise<[boolean]> {
+    return [await this.adapter.exists(this.key)];
+  }
+
+  async getMetadata(): Promise<[{ contentType?: string; size?: string | number }]> {
+    const meta = await this.adapter.getMetadata(this.key);
+    return [{ contentType: meta.contentType, size: meta.size }];
+  }
+
+  createReadStream(): Promise<Readable> {
+    return this.adapter.createReadStream(this.key);
+  }
+
+  async download(): Promise<[Buffer]> {
+    return [await this.adapter.get(this.key)];
   }
 }
 
-// The object storage service is used to interact with the object storage service.
+/**
+ * Facade over {@link StorageAdapter}. Call sites keep the historical
+ * ObjectStorageService API; the backend is S3, local disk, or the Replit
+ * sidecar depending on env (see docs/ops/object-storage.md).
+ */
 export class ObjectStorageService {
-  constructor() {}
+  constructor(private readonly adapterOverride?: StorageAdapter) {}
 
-  // Gets the public object search paths.
+  private adapter(): StorageAdapter {
+    return this.adapterOverride ?? getStorageAdapter();
+  }
+
+  /** The Replit adapter reads absolute paths, so entity paths resolve first. */
+  private storedObjectKey(adapter: StorageAdapter, objectPath: string): string {
+    return adapter instanceof ReplitSidecarStorage && isEntityObjectPath(objectPath)
+      ? adapter.getObjectEntityPath(objectPath)
+      : objectPath;
+  }
+
   getPublicObjectSearchPaths(): Array<string> {
-    const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
+    const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || '';
     const paths = Array.from(
       new Set(
         pathsStr
-          .split(",")
-          .map((path) => path.trim())
-          .filter((path) => path.length > 0)
-      )
+          .split(',')
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0),
+      ),
     );
     if (paths.length === 0) {
       throw new Error(
         "PUBLIC_OBJECT_SEARCH_PATHS not set. Create a bucket in 'Object Storage' " +
-          "tool and set PUBLIC_OBJECT_SEARCH_PATHS env var (comma-separated paths)."
+          'tool and set PUBLIC_OBJECT_SEARCH_PATHS env var (comma-separated paths).',
       );
     }
     return paths;
   }
 
-  // Gets the private object directory.
   getPrivateObjectDir(): string {
-    const dir = process.env.PRIVATE_OBJECT_DIR || "";
-    if (!dir) {
-      throw new Error(
-        "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
-      );
+    const adapter = this.adapter();
+    if (adapter instanceof ReplitSidecarStorage) {
+      return readReplitPrivateDir();
     }
-    return dir;
+    const dir = process.env.PRIVATE_OBJECT_DIR || process.env.S3_PREFIX || '';
+    if (dir) return dir;
+    if (adapter.provider === 's3') {
+      return `/${process.env.S3_BUCKET ?? ''}`;
+    }
+    return '/local';
   }
 
-  // Search for a public object from the search paths.
-  async searchPublicObject(filePath: string): Promise<File | null> {
+  async searchPublicObject(filePath: string): Promise<StorageObjectHandle | null> {
     for (const searchPath of this.getPublicObjectSearchPaths()) {
       const fullPath = `${searchPath}/${filePath}`;
-
-      // Full path format: /<bucket_name>/<object_name>
-      const { bucketName, objectName } = parseObjectPath(fullPath);
-      const bucket = objectStorageClient.bucket(bucketName);
-      const file = bucket.file(objectName);
-
-      // Check if file exists
-      const [exists] = await file.exists();
-      if (exists) {
-        return file;
+      const adapter = this.adapter();
+      if (await adapter.exists(fullPath)) {
+        return new AdapterObjectHandle(adapter, fullPath);
       }
     }
-
     return null;
   }
 
-  // Downloads an object to the response.
-  async downloadObject(file: File, res: Response, cacheTtlSec: number = 3600) {
+  async downloadObject(file: StorageObjectHandle, res: Response, cacheTtlSec: number = 3600) {
     try {
-      // Get file metadata
       const [metadata] = await file.getMetadata();
-      // Get the ACL policy for the object.
-      const aclPolicy = await getObjectAclPolicy(file);
-      const isPublic = aclPolicy?.visibility === "public";
-      // Set appropriate headers
+      let isPublic = false;
+      if (file.gcsFile) {
+        const aclPolicy = await getObjectAclPolicy(file.gcsFile);
+        isPublic = aclPolicy?.visibility === 'public';
+      }
       res.set({
-        "Content-Type": metadata.contentType || "application/octet-stream",
-        "Content-Length": metadata.size,
-        "Cache-Control": `${
-          isPublic ? "public" : "private"
-        }, max-age=${cacheTtlSec}`,
+        'Content-Type': metadata.contentType || 'application/octet-stream',
+        'Content-Length': metadata.size,
+        'Cache-Control': `${isPublic ? 'public' : 'private'}, max-age=${cacheTtlSec}`,
       });
-
-      // Stream the file to the response
-      const stream = file.createReadStream();
-
-      stream.on("error", (err) => {
-        console.error("Stream error:", err);
+      const stream = await file.createReadStream();
+      stream.on('error', (err) => {
+        console.error('Stream error:', err);
         if (!res.headersSent) {
-          res.status(500).json({ error: "Error streaming file" });
+          res.status(500).json({ error: 'Error streaming file' });
         }
       });
-
       stream.pipe(res);
     } catch (error) {
-      console.error("Error downloading file:", error);
+      console.error('Error downloading file:', error);
       if (!res.headersSent) {
-        res.status(500).json({ error: "Error downloading file" });
+        res.status(500).json({ error: 'Error downloading file' });
       }
     }
   }
 
-  // Gets the upload URL for an object entity.
   async getObjectEntityUploadURL(): Promise<string> {
-    const privateObjectDir = this.getPrivateObjectDir();
-    if (!privateObjectDir) {
-      throw new Error(
-        "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
-      );
-    }
-
-    const objectId = randomUUID();
-    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
-
-    const { bucketName, objectName } = parseObjectPath(fullPath);
-
-    // Sign URL for PUT method with TTL
-    return signObjectURL({
-      bucketName,
-      objectName,
-      method: "PUT",
-      ttlSec: 900,
-    });
+    const { url } = await this.adapter().getSignedUploadUrl(storageKeys.upload(randomUUID()), 900);
+    return url;
   }
 
-  // Gets the object entity file from the object path.
-  async getObjectEntityFile(objectPath: string): Promise<File> {
-    if (!objectPath.startsWith("/objects/")) {
+  async getObjectEntityFile(objectPath: string): Promise<StorageObjectHandle> {
+    if (!isEntityObjectPath(objectPath)) {
       throw new ObjectNotFoundError();
     }
-
-    const parts = objectPath.slice(1).split("/");
-    if (parts.length < 2) {
+    const adapter = this.adapter();
+    const key = this.storedObjectKey(adapter, objectPath);
+    if (!(await adapter.exists(key))) {
       throw new ObjectNotFoundError();
     }
-
-    const entityId = parts.slice(1).join("/");
-    let entityDir = this.getPrivateObjectDir();
-    if (!entityDir.endsWith("/")) {
-      entityDir = `${entityDir}/`;
+    const handle = new AdapterObjectHandle(adapter, key);
+    if (adapter instanceof ReplitSidecarStorage) {
+      // ACL helpers still speak GCS File.
+      try {
+        handle.gcsFile = adapter.gcsFile(key);
+      } catch {
+        // ACL is best-effort on Replit; streaming still works without it.
+      }
     }
-    const objectEntityPath = `${entityDir}${entityId}`;
-    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
-    const bucket = objectStorageClient.bucket(bucketName);
-    const objectFile = bucket.file(objectName);
-    const [exists] = await objectFile.exists();
-    if (!exists) {
-      throw new ObjectNotFoundError();
-    }
-    return objectFile;
+    return handle;
   }
 
-  normalizeObjectEntityPath(
-    rawPath: string,
-  ): string {
-    if (!rawPath.startsWith("https://storage.googleapis.com/")) {
-      return rawPath;
-    }
-  
-    // Extract the path from the URL by removing query parameters and domain
-    const url = new URL(rawPath);
-    const rawObjectPath = url.pathname;
-  
-    let objectEntityDir = this.getPrivateObjectDir();
-    if (!objectEntityDir.endsWith("/")) {
-      objectEntityDir = `${objectEntityDir}/`;
-    }
-  
-    if (!rawObjectPath.startsWith(objectEntityDir)) {
-      return rawObjectPath;
-    }
-  
-    // Extract the entity ID from the path
-    const entityId = rawObjectPath.slice(objectEntityDir.length);
-    return `/objects/${entityId}`;
+  normalizeObjectEntityPath(rawPath: string): string {
+    return this.adapter().normalizeObjectPath(rawPath);
   }
 
-  // Tries to set the ACL policy for the object entity and return the normalized path.
-  async trySetObjectEntityAclPolicy(
-    rawPath: string,
-    aclPolicy: ObjectAclPolicy
-  ): Promise<string> {
-    const normalizedPath = this.normalizeObjectEntityPath(rawPath);
-    if (!normalizedPath.startsWith("/")) {
-      return normalizedPath;
+  /**
+   * Validate a client-supplied upload path and return it as
+   * `/objects/uploads/<id>`. Throws {@link InvalidObjectPathError} for any
+   * other shape and {@link ObjectNotFoundError} when nothing was uploaded.
+   */
+  async trySetObjectEntityAclPolicy(rawPath: string, aclPolicy: ObjectAclPolicy): Promise<string> {
+    const adapter = this.adapter();
+    let normalizedPath: string;
+    try {
+      normalizedPath = adapter.normalizeObjectPath(rawPath);
+    } catch {
+      // Malformed URLs from the client (bad percent-encoding and the like).
+      throw new InvalidObjectPathError();
     }
-
-    const objectFile = await this.getObjectEntityFile(normalizedPath);
-    await setObjectAclPolicy(objectFile, aclPolicy);
+    if (adapter instanceof ReplitSidecarStorage) {
+      return adapter.trySetAclPolicy(normalizedPath, aclPolicy);
+    }
+    if (!isCanonicalUploadObjectPath(normalizedPath)) {
+      throw new InvalidObjectPathError();
+    }
+    if (!(await adapter.exists(normalizedPath))) {
+      throw new ObjectNotFoundError();
+    }
     return normalizedPath;
   }
 
-  // Uploads a Buffer (or string) to a key under the private object dir
-  // and returns the absolute /<bucket>/<object> path. Used by background
-  // workers (e.g. the dispatch route bulk-export worker) that need to
-  // park a generated file in object storage and hand back a download
-  // URL — there's no browser flow to get a presigned PUT, so we write
-  // through the sidecar-authenticated client directly.
-  //
-  // The returned path is what callers should persist: passing it back
-  // to `streamPrivateObject` (or any future signed-URL helper) avoids
-  // recomputing the bucket / private-dir resolution at read time.
   async uploadPrivateObject(
     relativeKey: string,
     body: Buffer | string,
     contentType: string,
   ): Promise<string> {
-    const dir = this.getPrivateObjectDir();
-    const cleanKey = relativeKey.replace(/^\/+/, '');
-    const fullPath = dir.endsWith('/') ? `${dir}${cleanKey}` : `${dir}/${cleanKey}`;
-    const { bucketName, objectName } = parseObjectPath(fullPath);
-    const file = objectStorageClient.bucket(bucketName).file(objectName);
-    // resumable: false keeps the upload to a single HTTP call — the
-    // archives we write are well under the 5 MB threshold where the
-    // resumable protocol starts to pay off, and the simple path is
-    // dramatically less prone to background-worker stalls.
-    await file.save(body, { contentType, resumable: false });
-    return fullPath;
+    return this.adapter().put(relativeKey, body, { contentType });
   }
 
-  // Deletes a private object previously written by uploadPrivateObject.
-  // Background sweepers (e.g. the dispatch route-export archive cleanup
-  // worker) call this once a download window has expired so the bucket
-  // doesn't accumulate stale customer data forever. Returns true when
-  // an object was removed, false when it was already gone — callers
-  // can treat both as success and only need to surface other errors.
-  //
-  // We deliberately do NOT pass `ignoreNotFound: true` here because that
-  // option swallows the 404 silently, making it impossible to tell
-  // already-gone from actually-deleted — which would corrupt the
-  // sweeper's `alreadyGone` telemetry. Instead we let the GCS client
-  // throw its standard 404 and translate it into `false` ourselves.
   async deletePrivateObject(fullObjectPath: string): Promise<boolean> {
-    const { bucketName, objectName } = parseObjectPath(fullObjectPath);
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectName);
-    try {
-      await file.delete();
-      return true;
-    } catch (err) {
-      const code = (err as { code?: number } | null)?.code;
-      if (code === 404) return false;
-      throw err;
-    }
+    return this.adapter().delete(fullObjectPath);
   }
 
-  // Streams an object stored at the absolute /<bucket>/<object> path
-  // (the value returned by `uploadPrivateObject`) straight into an
-  // Express response. Throws ObjectNotFoundError if the file no longer
-  // exists, so callers can return a 404 to the user without leaking
-  // storage internals. The optional `downloadFilename` is wired into
-  // the Content-Disposition header so browsers save with a stable name
-  // even when the key in storage is a UUID.
   async streamPrivateObject(
     fullObjectPath: string,
     res: Response,
-    options?: { downloadFilename?: string; cacheTtlSec?: number },
+    options?: StreamObjectOptions,
   ): Promise<void> {
-    const { bucketName, objectName } = parseObjectPath(fullObjectPath);
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectName);
-    const [exists] = await file.exists();
-    if (!exists) {
+    const adapter = this.adapter();
+    if (!(await adapter.exists(fullObjectPath))) {
       throw new ObjectNotFoundError();
     }
-    const [metadata] = await file.getMetadata();
+    const metadata = await adapter.getMetadata(fullObjectPath);
+    const storedType = metadata.contentType?.toLowerCase();
+    const hasSpecificType = storedType && !GENERIC_CONTENT_TYPES.has(storedType);
     res.setHeader(
       'Content-Type',
-      metadata.contentType || 'application/octet-stream',
+      (hasSpecificType ? metadata.contentType : options?.fallbackContentType) ||
+        metadata.contentType ||
+        'application/octet-stream',
     );
     if (metadata.size != null) {
       res.setHeader('Content-Length', String(metadata.size));
     }
-    res.setHeader(
-      'Cache-Control',
-      `private, max-age=${options?.cacheTtlSec ?? 0}`,
-    );
+    res.setHeader('Cache-Control', `private, max-age=${options?.cacheTtlSec ?? 0}`);
     if (options?.downloadFilename) {
-      // Quote the filename to survive spaces / dots; sanitize quotes so
-      // a malformed key can't break the header.
       const safe = options.downloadFilename.replace(/"/g, '');
-      res.setHeader('Content-Disposition', `attachment; filename="${safe}"`);
+      const disposition = options.contentDisposition ?? 'attachment';
+      res.setHeader('Content-Disposition', `${disposition}; filename="${safe}"`);
     }
-
+    const stream = await adapter.createReadStream(fullObjectPath);
     await new Promise<void>((resolve, reject) => {
-      const stream = file.createReadStream();
       stream.on('error', reject);
       stream.on('end', resolve);
       stream.on('close', resolve);
@@ -322,80 +258,39 @@ export class ObjectStorageService {
     });
   }
 
-  // Checks if the user can access the object entity.
+  /**
+   * Stream an object stored as either `/objects/<entity>` or an absolute
+   * `/<bucket>/<object>` path. Used by attachment and completion-photo
+   * handlers so they no longer depend on a GCS File handle.
+   */
+  async streamStoredObject(
+    objectPath: string,
+    res: Response,
+    options?: StreamObjectOptions,
+  ): Promise<void> {
+    await this.streamPrivateObject(this.storedObjectKey(this.adapter(), objectPath), res, options);
+  }
+
   async canAccessObjectEntity({
     userId,
     objectFile,
     requestedPermission,
   }: {
     userId?: string;
-    objectFile: File;
+    objectFile: StorageObjectHandle;
     requestedPermission?: ObjectPermission;
   }): Promise<boolean> {
+    if (!objectFile.gcsFile) return true;
     return canAccessObject({
       userId,
-      objectFile,
+      objectFile: objectFile.gcsFile,
       requestedPermission: requestedPermission ?? ObjectPermission.READ,
     });
   }
 }
 
-function parseObjectPath(path: string): {
-  bucketName: string;
-  objectName: string;
-} {
-  if (!path.startsWith("/")) {
-    path = `/${path}`;
-  }
-  const pathParts = path.split("/");
-  if (pathParts.length < 3) {
-    throw new Error("Invalid path: must contain at least a bucket name");
-  }
-
-  const bucketName = pathParts[1];
-  const objectName = pathParts.slice(2).join("/");
-
-  return {
-    bucketName,
-    objectName,
-  };
+export function objectStorageIsReady(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return isObjectStorageConfigured(env);
 }
-
-async function signObjectURL({
-  bucketName,
-  objectName,
-  method,
-  ttlSec,
-}: {
-  bucketName: string;
-  objectName: string;
-  method: "GET" | "PUT" | "DELETE" | "HEAD";
-  ttlSec: number;
-}): Promise<string> {
-  const request = {
-    bucket_name: bucketName,
-    object_name: objectName,
-    method,
-    expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
-  };
-  const response = await fetch(
-    `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(request),
-    }
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Failed to sign object URL, errorcode: ${response.status}, ` +
-        `make sure you're running on Replit`
-    );
-  }
-
-  const { signed_url: signedURL } = await response.json();
-  return signedURL;
-}
-

@@ -65,6 +65,7 @@ import {
 import { startHoldSweeper, stopHoldSweeper, holdSweepInFlight } from '../actions/scheduling/holdSweeper';
 import type { ProcessRole } from './processRole';
 import { runWithPrivilegedScope } from '../db/tenantScope';
+import { isObjectStorageConfigured } from '../storage';
 
 export interface SchedulerContext {
   /** Public voice-gateway base URL used for campaign TwiML/status callbacks. */
@@ -205,10 +206,10 @@ export const SCHEDULERS: readonly SchedulerDefinition[] = [
     name: 'route-export-archive-cleanup',
     start: () => startRouteExportArchiveCleanupScheduler(),
     stop: stopRouteExportArchiveCleanupScheduler,
-    // Deletes archives through the Replit object-storage sidecar. Without
-    // PRIVATE_OBJECT_DIR (Render until PR-00b) there is nothing to clean up
-    // and every call would fail against 127.0.0.1:1106.
-    skipReason: (env) => (env.PRIVATE_OBJECT_DIR?.trim() ? null : 'PRIVATE_OBJECT_DIR not set (object storage not configured)'),
+    // Deletes archives through the storage adapter (S3, local disk, or the
+    // Replit sidecar). Without a configured backend there is nothing to
+    // clean up — and the Replit client would fail against 127.0.0.1:1106.
+    skipReason: (env) => (isObjectStorageConfigured(env) ? null : 'object storage not configured'),
   },
   {
     name: 'plan-recommendation-digest',

@@ -156,6 +156,7 @@ platform/       # Core platform modules
   core/         # Environment config, RBAC
   db/           # Database connection pool
   tenant/       # Tenant management
+  storage/      # Object storage adapter (S3 / local disk / Replit sidecar)
 migrations/     # SQL migration files (001-120; 120 = qvo_app NOBYPASSRLS role)
 scripts/        # Migration runner, seed scripts
 ```

@@ -157,12 +157,22 @@ describe('scheduler registry', () => {
     expect(sel.enabled).toEqual([]);
   });
 
-  it('role all skips route-export cleanup without PRIVATE_OBJECT_DIR', () => {
+  it('role all skips route-export cleanup without object storage', () => {
     const sel = selectSchedulers('all', {});
     expect(sel.enabled.map((s) => s.name)).not.toContain('route-export-archive-cleanup');
     expect(sel.skipped).toEqual([
-      { name: 'route-export-archive-cleanup', reason: 'PRIVATE_OBJECT_DIR not set (object storage not configured)' },
+      { name: 'route-export-archive-cleanup', reason: 'object storage not configured' },
     ]);
+  });
+
+  it('role all starts route-export cleanup when S3 storage is configured', () => {
+    const sel = selectSchedulers('all', {
+      OBJECT_STORAGE_PROVIDER: 's3',
+      S3_BUCKET: 'qvo-objects',
+      S3_ACCESS_KEY_ID: 'id',
+      S3_SECRET_ACCESS_KEY: 'secret',
+    });
+    expect(sel.enabled.map((s) => s.name)).toContain('route-export-archive-cleanup');
   });
 
   it('role worker defaults to none (shadow-safe)', () => {

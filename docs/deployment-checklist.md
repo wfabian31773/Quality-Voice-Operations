@@ -81,6 +81,11 @@
 | `PLATFORM_ADMIN_BASE_URL` | falls back to `ADMIN_PUBLIC_URL` → `APP_PUBLIC_URL` → `ADMIN_API_BASE_URL` | Public origin used to build deep links inside sales-alert emails / Slack messages (e.g. `https://app.example.com/admin/sales-inbox#lead-42`). Set this to the URL admins use to reach the SPA, not the raw API origin, when those differ. |
 | `QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY` | unset | Previous caller-lookup HMAC key. Set only during one controlled rotation/backfill window and always pair it with `QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION`. Partial, weak, or duplicate configuration fails closed. |
 | `QVO_PII_LOOKUP_HMAC_PREVIOUS_VERSION` | unset | Version belonging to `QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY`. It must differ from the current version. Remove both previous-key variables only after reconciliation reports zero stale or missing hashes. |
+| `OBJECT_STORAGE_PROVIDER` | auto | Object storage backend: `s3` (Supabase/AWS/MinIO), `local` (tests), `replit` (legacy sidecar). See [object storage](ops/object-storage.md). Not added to Render by this PR. |
+| `S3_BUCKET` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | unset | Required together when `OBJECT_STORAGE_PROVIDER=s3`. Never commit values. |
+| `S3_ENDPOINT` / `S3_REGION` / `S3_FORCE_PATH_STYLE` / `S3_PREFIX` | see object-storage.md | S3-compatible extras. Supabase Storage uses `https://<ref>.supabase.co/storage/v1/s3`. |
+| `OBJECT_STORAGE_LOCAL_DIR` | `os.tmpdir()/qvo-object-storage` | Local-disk root for tests. Do not use on Render. |
+| `PRIVATE_OBJECT_DIR` / `PUBLIC_OBJECT_SEARCH_PATHS` | unset | Replit sidecar only. |
 
 ## 2. Pre-deployment Validation
 

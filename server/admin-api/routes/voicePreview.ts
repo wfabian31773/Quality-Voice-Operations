@@ -2,7 +2,11 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { requireAuth } from '../middleware/auth';
 import { createLogger } from '../../../platform/core/logger';
-import { objectStorageClient } from '../../replit_integrations/object_storage';
+import {
+  getStorageAdapter,
+  isObjectStorageConfigured,
+  storageKeys,
+} from '../../../platform/storage';
 import { VOICES } from '../../../client-app/src/lib/agentVoices';
 
 const router = Router();
@@ -126,37 +130,13 @@ function previewKey(voice: string, language: string, hash: string): string {
   return `${voice}:${language}:${hash.slice(0, 32)}`;
 }
 
-interface ObjectLocation {
-  bucketName: string;
-  objectName: string;
-}
-
-function getObjectLocation(hash: string): ObjectLocation | null {
-  const dir = process.env.PRIVATE_OBJECT_DIR;
-  if (!dir) return null;
-  const trimmed = dir.replace(/\/+$/, '');
-  // Namespace under voice-previews/ so this cache isn't co-mingled with
-  // other private objects (e.g. dispatch attachments). Each file is keyed
-  // purely by the (voice, language, greeting) sha256 hash.
-  const fullPath = `${trimmed}/voice-previews/${hash}.${TTS_FORMAT}`;
-  const path = fullPath.startsWith('/') ? fullPath.slice(1) : fullPath;
-  const parts = path.split('/');
-  if (parts.length < 2) return null;
-  return {
-    bucketName: parts[0],
-    objectName: parts.slice(1).join('/'),
-  };
-}
-
 async function readFromObjectStorage(hash: string): Promise<Buffer | null> {
-  const loc = getObjectLocation(hash);
-  if (!loc) return null;
+  if (!isObjectStorageConfigured()) return null;
   try {
-    const file = objectStorageClient.bucket(loc.bucketName).file(loc.objectName);
-    const [exists] = await file.exists();
-    if (!exists) return null;
-    const [buf] = await file.download();
-    return buf;
+    const adapter = getStorageAdapter();
+    const key = storageKeys.voicePreview(hash);
+    if (!(await adapter.exists(key, { voicePreview: true }))) return null;
+    return await adapter.get(key, { voicePreview: true });
   } catch (err) {
     logger.warn('Voice preview object storage read failed', {
       hash: hash.slice(0, 12),
@@ -167,16 +147,12 @@ async function readFromObjectStorage(hash: string): Promise<Buffer | null> {
 }
 
 async function writeToObjectStorage(hash: string, audio: Buffer): Promise<void> {
-  const loc = getObjectLocation(hash);
-  if (!loc) return;
+  if (!isObjectStorageConfigured()) return;
   try {
-    const file = objectStorageClient.bucket(loc.bucketName).file(loc.objectName);
-    await file.save(audio, {
+    await getStorageAdapter().put(storageKeys.voicePreview(hash), audio, {
       contentType: TTS_CONTENT_TYPE,
-      resumable: false,
-      metadata: {
-        cacheControl: 'private, max-age=31536000',
-      },
+      cacheControl: 'private, max-age=31536000',
+      voicePreview: true,
     });
   } catch (err) {
     logger.warn('Voice preview object storage write failed', {
