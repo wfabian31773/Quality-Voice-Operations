@@ -1,3 +1,4 @@
+import { S3Client } from '@aws-sdk/client-s3';
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -527,6 +528,93 @@ describe('S3CompatibleStorage (real SDK presigner, no network)', () => {
       expect(adapter.normalizeObjectPath(signed.url)).toBe('/objects/uploads/u1');
     }
   });
+
+  const urlStyleCases = [
+    { bucket: 'uploads', prefix: undefined, objectKey: 'uploads/u1' },
+    { bucket: 'objects', prefix: undefined, objectKey: 'uploads/u1' },
+    { bucket: 'objects', prefix: 'prod', objectKey: 'prod/uploads/u1' },
+    { bucket: 'objects', prefix: 'objects/prod', objectKey: 'objects/prod/uploads/u1' },
+    { bucket: 'qvo-objects', prefix: undefined, objectKey: 'uploads/u1' },
+  ];
+
+  const urlStyles = urlStyleCases.flatMap((c) => [
+    {
+      ...c,
+      style: 'virtual-hosted AWS',
+      env: { S3_FORCE_PATH_STYLE: 'false' },
+      host: `${c.bucket}.s3.us-east-1.amazonaws.com`,
+      pathname: `/${c.objectKey}`,
+    },
+    {
+      ...c,
+      style: 'virtual-hosted custom endpoint',
+      env: { S3_FORCE_PATH_STYLE: 'false', S3_ENDPOINT: 'https://storage.example.com' },
+      host: `${c.bucket}.storage.example.com`,
+      pathname: `/${c.objectKey}`,
+    },
+    {
+      ...c,
+      style: 'path-style',
+      env: { S3_ENDPOINT: 'http://localhost:9000' },
+      host: 'localhost:9000',
+      pathname: `/${c.bucket}/${c.objectKey}`,
+    },
+    {
+      ...c,
+      style: 'path-style under an endpoint path',
+      env: { S3_ENDPOINT: 'https://abc.supabase.co/storage/v1/s3' },
+      host: 'abc.supabase.co',
+      pathname: `/storage/v1/s3/${c.bucket}/${c.objectKey}`,
+    },
+    {
+      ...c,
+      // The SDK falls back to path-style for an IP endpoint even with the flag off.
+      style: 'path-style from an IP endpoint with S3_FORCE_PATH_STYLE=false',
+      env: { S3_FORCE_PATH_STYLE: 'false', S3_ENDPOINT: 'http://127.0.0.1:9000' },
+      host: '127.0.0.1:9000',
+      pathname: `/${c.bucket}/${c.objectKey}`,
+    },
+    {
+      ...c,
+      // A bucket-named host is only virtual-hosted when path style is off.
+      style: 'path-style on a host that starts with the bucket name',
+      env: { S3_ENDPOINT: `https://${c.bucket}.example.com` },
+      host: `${c.bucket}.example.com`,
+      pathname: `/${c.bucket}/${c.objectKey}`,
+    },
+  ]);
+
+  it.each(urlStyles)(
+    '$style: signed URL registers as an attachment under bucket=$bucket prefix=$prefix',
+    async ({ bucket, prefix, objectKey, env, host, pathname }) => {
+      const adapter = createS3StorageAdapter({
+        S3_BUCKET: bucket,
+        S3_PREFIX: prefix,
+        S3_ACCESS_KEY_ID: 'AKIAEXAMPLE',
+        S3_SECRET_ACCESS_KEY: 'secret',
+        ...env,
+      });
+      const signed = await adapter.getSignedUploadUrl(storageKeys.upload('u1'), 60);
+      const url = new URL(signed.url);
+      expect(url.host).toBe(host);
+      expect(url.pathname).toBe(pathname);
+      expect(signed.objectPath).toBe('/objects/uploads/u1');
+      expect(adapter.normalizeObjectPath(signed.url)).toBe('/objects/uploads/u1');
+
+      // No network: the presigner never calls send, only the existence check does.
+      const send = vi.spyOn(S3Client.prototype, 'send').mockImplementation(async () => ({}));
+      try {
+        const svc = new ObjectStorageService(adapter);
+        const policy = { owner: 'tenant:t1', visibility: 'private' as const };
+        await expect(svc.trySetObjectEntityAclPolicy(signed.url, policy)).resolves.toBe('/objects/uploads/u1');
+        const commands = send.mock.calls.map(([command]) => command.input as { Bucket: string; Key: string });
+        expect(commands.length).toBeGreaterThan(0);
+        for (const input of commands) expect(input).toMatchObject({ Bucket: bucket, Key: objectKey });
+      } finally {
+        send.mockRestore();
+      }
+    },
+  );
 });
 
 describe('S3CompatibleStorage (mocked SDK)', () => {

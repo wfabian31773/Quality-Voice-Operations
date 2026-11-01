@@ -214,8 +214,14 @@ export class S3CompatibleStorage implements StorageAdapter {
       remainder = remainder.slice(endpointPath.length);
     }
     remainder = remainder.replace(/^\/+/, '');
+    // On a virtual-hosted URL the bucket is in the host and the whole path is the
+    // key, so a leading segment that matches the bucket name belongs to the key.
+    // The SDK can still emit path-style with forcePathStyle off (IP endpoints,
+    // non-DNS bucket names), so check the host rather than only the flag.
+    const isVirtualHosted =
+      !this.config.forcePathStyle && url.hostname.startsWith(`${this.config.bucket}.`);
     const bucketPrefix = `${this.config.bucket}/`;
-    if (remainder.startsWith(bucketPrefix)) {
+    if (!isVirtualHosted && remainder.startsWith(bucketPrefix)) {
       remainder = remainder.slice(bucketPrefix.length);
     }
     if (this.config.prefix && remainder.startsWith(`${this.config.prefix}/`)) {
