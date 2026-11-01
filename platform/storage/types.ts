@@ -10,7 +10,15 @@ export function isKnownStorageProviderName(raw: string | undefined): boolean {
   return (OBJECT_STORAGE_PROVIDERS as readonly string[]).includes(value);
 }
 
-export interface PutObjectOptions {
+export interface ObjectKeyOptions {
+  /**
+   * The key is voice-preview cache, which the Replit adapter locates by its own
+   * rules. S3 and local disk ignore this.
+   */
+  voicePreview?: boolean;
+}
+
+export interface PutObjectOptions extends ObjectKeyOptions {
   contentType?: string;
   cacheControl?: string;
 }
@@ -43,12 +51,12 @@ export interface StorageAdapter {
   readonly provider: ObjectStorageProvider;
 
   put(key: string, body: Buffer | string, options?: PutObjectOptions): Promise<string>;
-  get(key: string): Promise<Buffer>;
-  getMetadata(key: string): Promise<StoredObjectMetadata>;
-  exists(key: string): Promise<boolean>;
+  get(key: string, options?: ObjectKeyOptions): Promise<Buffer>;
+  getMetadata(key: string, options?: ObjectKeyOptions): Promise<StoredObjectMetadata>;
+  exists(key: string, options?: ObjectKeyOptions): Promise<boolean>;
   /** `true` when an object was removed, `false` when it was already gone. */
-  delete(key: string): Promise<boolean>;
-  createReadStream(key: string): Promise<Readable>;
+  delete(key: string, options?: ObjectKeyOptions): Promise<boolean>;
+  createReadStream(key: string, options?: ObjectKeyOptions): Promise<Readable>;
   getSignedUploadUrl(key: string, ttlSec: number): Promise<SignedUploadUrl>;
   normalizeObjectPath(rawPath: string): string;
 }

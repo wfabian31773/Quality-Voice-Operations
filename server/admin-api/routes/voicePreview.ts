@@ -135,8 +135,8 @@ async function readFromObjectStorage(hash: string): Promise<Buffer | null> {
   try {
     const adapter = getStorageAdapter();
     const key = storageKeys.voicePreview(hash);
-    if (!(await adapter.exists(key))) return null;
-    return await adapter.get(key);
+    if (!(await adapter.exists(key, { voicePreview: true }))) return null;
+    return await adapter.get(key, { voicePreview: true });
   } catch (err) {
     logger.warn('Voice preview object storage read failed', {
       hash: hash.slice(0, 12),
@@ -152,6 +152,7 @@ async function writeToObjectStorage(hash: string, audio: Buffer): Promise<void> 
     await getStorageAdapter().put(storageKeys.voicePreview(hash), audio, {
       contentType: TTS_CONTENT_TYPE,
       cacheControl: 'private, max-age=31536000',
+      voicePreview: true,
     });
   } catch (err) {
     logger.warn('Voice preview object storage write failed', {

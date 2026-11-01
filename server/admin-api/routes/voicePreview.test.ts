@@ -119,6 +119,21 @@ describe('POST /agents/voice-preview synthesis', () => {
     expect(res.status).toBe(200);
     expect(res.headers['x-voice-preview-cache']).toBe('warm');
     expect(fetchMock).not.toHaveBeenCalled();
+    const key = expect.stringMatching(/^voice-previews\/[0-9a-f]{64}\.mp3$/);
+    expect(a.existsMock).toHaveBeenCalledWith(key, { voicePreview: true });
+    expect(a.getMock).toHaveBeenCalledWith(key, { voicePreview: true });
+  });
+
+  it('flags the warm-tier write as a voice preview', async () => {
+    process.env.PRIVATE_OBJECT_DIR = '/bucket/private';
+    fetchMock.mockResolvedValue({ ok: true, arrayBuffer: async () => new TextEncoder().encode('AUDIO').buffer });
+    const res = await request(app()).post('/agents/voice-preview').send({ voice: VOICE, language: 'en', greeting: uniqueGreeting() });
+    expect(res.headers['x-voice-preview-cache']).toBe('miss');
+    expect(a.putMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^voice-previews\/[0-9a-f]{64}\.mp3$/),
+      expect.any(Buffer),
+      expect.objectContaining({ voicePreview: true }),
+    );
   });
 
   it('falls back to TTS when the object storage read rejects', async () => {

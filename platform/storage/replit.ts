@@ -8,6 +8,7 @@ import {
 import { InvalidObjectPathError, ObjectNotFoundError, StorageNotConfiguredError } from './errors';
 import { isCanonicalUploadObjectPath } from './paths';
 import type {
+  ObjectKeyOptions,
   PutObjectOptions,
   SignedUploadUrl,
   StorageAdapter,
@@ -68,9 +69,6 @@ function parseObjectPath(path: string): {
     objectName,
   };
 }
-
-/** Voice-preview cache keys, the only relative keys read back through the adapter. */
-const VOICE_PREVIEW_KEY = /^voice-previews\/[^/]+$/;
 
 /** main's voicePreview getObjectLocation, which trimmed the private dir itself. */
 function voicePreviewFullPath(dir: string, key: string): string {
@@ -146,17 +144,17 @@ export class ReplitSidecarStorage implements StorageAdapter {
     return `${entityDir}${entityId}`;
   }
 
-  /** main's uploadPrivateObject join, or its voice-preview one for those keys. */
-  private uploadFullPath(relativeKey: string): string {
+  /** main's uploadPrivateObject join, or its voice-preview one when flagged. */
+  private uploadFullPath(relativeKey: string, options?: ObjectKeyOptions): string {
     const dir = this.getPrivateObjectDir();
-    if (VOICE_PREVIEW_KEY.test(relativeKey)) return voicePreviewFullPath(dir, relativeKey);
+    if (options?.voicePreview) return voicePreviewFullPath(dir, relativeKey);
     const cleanKey = relativeKey.replace(/^\/+/, '');
     return dir.endsWith('/') ? `${dir}${cleanKey}` : `${dir}/${cleanKey}`;
   }
 
   /** Reads take what main's streamPrivateObject / deletePrivateObject took. */
-  private locate(key: string): { bucketName: string; objectName: string } {
-    if (VOICE_PREVIEW_KEY.test(key)) {
+  private locate(key: string, options?: ObjectKeyOptions): { bucketName: string; objectName: string } {
+    if (options?.voicePreview) {
       return parseObjectPath(voicePreviewFullPath(this.getPrivateObjectDir(), key));
     }
     return parseObjectPath(key);
@@ -183,7 +181,7 @@ export class ReplitSidecarStorage implements StorageAdapter {
   }
 
   async put(key: string, body: Buffer | string, options?: PutObjectOptions): Promise<string> {
-    const fullPath = this.uploadFullPath(key);
+    const fullPath = this.uploadFullPath(key, options);
     const { bucketName, objectName } = parseObjectPath(fullPath);
     const file = this.client.bucket(bucketName).file(objectName);
     await file.save(body, {
@@ -194,8 +192,8 @@ export class ReplitSidecarStorage implements StorageAdapter {
     return fullPath;
   }
 
-  async get(key: string): Promise<Buffer> {
-    const { bucketName, objectName } = this.locate(key);
+  async get(key: string, options?: ObjectKeyOptions): Promise<Buffer> {
+    const { bucketName, objectName } = this.locate(key, options);
     const file = this.client.bucket(bucketName).file(objectName);
     try {
       const [buf] = await file.download();
@@ -207,8 +205,8 @@ export class ReplitSidecarStorage implements StorageAdapter {
     }
   }
 
-  async getMetadata(key: string): Promise<StoredObjectMetadata> {
-    const { bucketName, objectName } = this.locate(key);
+  async getMetadata(key: string, options?: ObjectKeyOptions): Promise<StoredObjectMetadata> {
+    const { bucketName, objectName } = this.locate(key, options);
     const file = this.client.bucket(bucketName).file(objectName);
     try {
       const [metadata] = await file.getMetadata();
@@ -226,15 +224,15 @@ export class ReplitSidecarStorage implements StorageAdapter {
     }
   }
 
-  async exists(key: string): Promise<boolean> {
-    const { bucketName, objectName } = this.locate(key);
+  async exists(key: string, options?: ObjectKeyOptions): Promise<boolean> {
+    const { bucketName, objectName } = this.locate(key, options);
     const file = this.client.bucket(bucketName).file(objectName);
     const [exists] = await file.exists();
     return exists;
   }
 
-  async delete(key: string): Promise<boolean> {
-    const { bucketName, objectName } = this.locate(key);
+  async delete(key: string, options?: ObjectKeyOptions): Promise<boolean> {
+    const { bucketName, objectName } = this.locate(key, options);
     const file = this.client.bucket(bucketName).file(objectName);
     try {
       await file.delete();
@@ -246,8 +244,8 @@ export class ReplitSidecarStorage implements StorageAdapter {
     }
   }
 
-  async createReadStream(key: string): Promise<Readable> {
-    const { bucketName, objectName } = this.locate(key);
+  async createReadStream(key: string, options?: ObjectKeyOptions): Promise<Readable> {
+    const { bucketName, objectName } = this.locate(key, options);
     const file = this.client.bucket(bucketName).file(objectName);
     const [exists] = await file.exists();
     if (!exists) throw new ObjectNotFoundError();

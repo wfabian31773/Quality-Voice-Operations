@@ -246,6 +246,7 @@ const DIRS: Array<string | undefined> = [
   '/objects//',
   '/uploads',
   '/qvo-bucket/private',
+  '/bucket/private//',
   undefined,
 ];
 
@@ -288,6 +289,12 @@ const PATHS = [
   storageKeys.recording('t1', 'CA1'),
   storageKeys.knowledgeDocument('t1', 'd1'),
   'bare',
+  // Voice-preview shapes without the flag: main's generic rules apply.
+  storageKeys.voicePreview('hash1'),
+  `/${storageKeys.voicePreview('hash1')}`,
+  `/objects/${storageKeys.voicePreview('hash1')}`,
+  `/bucket/private/${storageKeys.voicePreview('hash1')}`,
+  `/bucket/private//${storageKeys.voicePreview('hash1')}`,
   // Signed-URL forms reaching a read by mistake.
   `https://storage.googleapis.com/qvo-bucket/private/uploads/${ID}?X-Goog-Signature=x`,
 ];
@@ -453,20 +460,30 @@ describe.each(DIRS.map((dir) => ({ dir: dir ?? '(unset)', raw: dir })))(
       expect(await outcome([], async () => svc.normalizeObjectEntityPath(url))).toEqual(expected);
     });
 
-    it('caches voice previews where main did', async () => {
+    it.each(['hash1', 'a'.repeat(64)])('caches flagged voice preview %s where main did', async (hash) => {
       const { adapter, adapterCalls } = setup();
-      const key = storageKeys.voicePreview('hash1');
-      const location = getObjectLocation('hash1');
-      if (!location) {
-        await expect(adapter.exists(key)).rejects.toThrow(/PRIVATE_OBJECT_DIR not set/);
-        await expect(adapter.put(key, 'x')).rejects.toThrow(/PRIVATE_OBJECT_DIR not set/);
-        return;
+      const key = storageKeys.voicePreview(hash);
+      const flag = { voicePreview: true };
+      const location = getObjectLocation(hash);
+      const operations: Array<() => Promise<unknown>> = [
+        () => adapter.exists(key, flag),
+        () => adapter.get(key, flag),
+        () => adapter.getMetadata(key, flag),
+        async () => (await adapter.createReadStream(key, flag)).destroy(),
+        () => adapter.put(key, 'x', flag),
+        () => adapter.delete(key, flag),
+      ];
+      for (const operation of operations) {
+        const actual = await outcome(adapterCalls, operation);
+        if (location) {
+          expect(actual.touched).toEqual([JSON.stringify([location.bucketName, location.objectName])]);
+          expect(actual.error).toBeUndefined();
+        } else {
+          // main's getObjectLocation returned null here, so nothing was touched.
+          expect(actual.touched).toEqual([]);
+          expect(actual.error).toMatch(/PRIVATE_OBJECT_DIR not set/);
+        }
       }
-      await adapter.exists(key);
-      await adapter.get(key);
-      await adapter.put(key, 'x');
-      for (const call of adapterCalls) expect(call).toEqual([location.bucketName, location.objectName]);
-      expect(adapterCalls).toHaveLength(3);
     });
   },
 );
@@ -501,6 +518,28 @@ describe('pinned keys', () => {
     { dir: '/qvo-bucket/private', path: '/objects//uploads/u1', full: '/qvo-bucket/private//uploads/u1' },
   ])('$path under $dir is the entity at $full', ({ dir, path, full }) => {
     expect(adapterFor(dir).adapter.getObjectEntityPath(path)).toBe(full);
+  });
+
+  describe('voice-preview keys under /bucket/private//', () => {
+    const key = 'voice-previews/hash.mp3';
+
+    it('collapses the dir only when flagged', async () => {
+      const { adapter, calls } = adapterFor('/bucket/private//');
+      expect(await adapter.put(key, 'x', { voicePreview: true })).toBe('/bucket/private/voice-previews/hash.mp3');
+      await adapter.get(key, { voicePreview: true });
+      expect(await adapter.delete(key, { voicePreview: true })).toBe(true);
+      expect(calls).toEqual(Array(3).fill(['bucket', 'private/voice-previews/hash.mp3']));
+    });
+
+    it('keeps the generic rules without the flag', async () => {
+      const { adapter, calls } = adapterFor('/bucket/private//');
+      expect(await adapter.put(key, 'x')).toBe('/bucket/private//voice-previews/hash.mp3');
+      expect(calls).toEqual([['bucket', 'private//voice-previews/hash.mp3']]);
+      calls.length = 0;
+      await adapter.get(key);
+      expect(await adapter.delete(key)).toBe(true);
+      expect(calls).toEqual(Array(2).fill(['voice-previews', 'hash.mp3']));
+    });
   });
 });
 
