@@ -38,7 +38,8 @@ concurrency:
 jobs:
   billing-health-live-stripe:
     name: Billing config health tile (Stripe live) e2e
-    runs-on: ubuntu-latest
+    # Pin to ubuntu-24.04; Playwright cannot install Chromium on ubuntu-26.04 (ubuntu-latest).
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
 
     services:
