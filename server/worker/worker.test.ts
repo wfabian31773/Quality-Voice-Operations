@@ -138,6 +138,88 @@ describe('SchedulerWorker', () => {
     await t.worker.shutdown('SIGTERM');
     expect(t.elector.stop).toHaveBeenCalledTimes(1);
   });
+
+  it('cancels deferred scheduler starts on leadership loss', async () => {
+    const run = vi.fn();
+    let deferred: ReturnType<typeof setTimeout> | null = null;
+    const scheduler: SchedulerDefinition = {
+      name: 'insights',
+      start: () => {
+        deferred = setTimeout(run, 60_000);
+      },
+      stop: () => {
+        if (deferred) {
+          clearTimeout(deferred);
+          deferred = null;
+        }
+      },
+    };
+    let hooks!: { onAcquire: () => void; onLose: () => void };
+    const worker = new SchedulerWorker({
+      schedulers: [scheduler],
+      ctx: { voiceGatewayBaseUrl: 'https://voice.example.com' },
+      createElector: (h) => {
+        hooks = h;
+        return { start: async () => {}, stop: async () => {}, isLeader: () => false };
+      },
+      pool: () => ({ totalCount: 0, idleCount: 0, waitingCount: 0 }),
+      closePool: async () => {},
+    });
+    await worker.start();
+    hooks.onAcquire();
+    hooks.onLose();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('cancels deferred scheduler starts on shutdown even after already losing leadership', async () => {
+    const run = vi.fn();
+    let deferred: ReturnType<typeof setTimeout> | null = null;
+    const scheduler: SchedulerDefinition = {
+      name: 'insights',
+      start: () => {
+        deferred = setTimeout(run, 60_000);
+      },
+      stop: () => {
+        if (deferred) {
+          clearTimeout(deferred);
+          deferred = null;
+        }
+      },
+    };
+    let hooks!: { onAcquire: () => void; onLose: () => void };
+    const electorStop = vi.fn(async () => {});
+    const worker = new SchedulerWorker({
+      schedulers: [scheduler],
+      ctx: { voiceGatewayBaseUrl: 'https://voice.example.com' },
+      createElector: (h) => {
+        hooks = h;
+        return { start: async () => {}, stop: electorStop, isLeader: () => false };
+      },
+      pool: () => ({ totalCount: 0, idleCount: 0, waitingCount: 0 }),
+      closePool: async () => {},
+    });
+    await worker.start();
+    hooks.onAcquire();
+    hooks.onLose();
+    await worker.shutdown('SIGTERM');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(run).not.toHaveBeenCalled();
+    expect(electorStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-acquiring leadership starts schedulers exactly once per term', async () => {
+    const t = setup({ current: { totalCount: 0, idleCount: 0, waitingCount: 0 } });
+    await t.worker.start();
+    t.hooks().onAcquire();
+    t.hooks().onLose();
+    t.hooks().onAcquire();
+    t.hooks().onAcquire();
+    expect(t.s1.start).toHaveBeenCalledTimes(2);
+    expect(t.s1.stop).toHaveBeenCalledTimes(1);
+    t.hooks().onLose();
+    expect(t.s1.stop).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('awaitInFlightWork', () => {

@@ -7,6 +7,9 @@ import { invalidatePublicBenchmarkCache } from './publicBenchmarkCache';
 const logger = createLogger('GIN_SCHEDULER');
 
 let aggregationTimer: ReturnType<typeof setInterval> | null = null;
+let initialAggregationTimer: ReturnType<typeof setTimeout> | null = null;
+/** Bumped on start/stop so a deferred first-run cannot fire after leadership loss. */
+let ginGeneration = 0;
 
 const AGGREGATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
@@ -34,14 +37,28 @@ async function runGinCycle(): Promise<void> {
 }
 
 export function startGinScheduler(): void {
+  if (aggregationTimer) return;
+  const generation = ++ginGeneration;
   logger.info('Starting GIN scheduler', { intervalHours: AGGREGATION_INTERVAL_MS / 3600000 });
 
-  setTimeout(() => runGinCycle(), 5 * 60 * 1000);
+  initialAggregationTimer = setTimeout(() => {
+    initialAggregationTimer = null;
+    if (ginGeneration !== generation) return;
+    void runGinCycle();
+  }, 5 * 60 * 1000);
 
-  aggregationTimer = setInterval(runGinCycle, AGGREGATION_INTERVAL_MS);
+  aggregationTimer = setInterval(() => {
+    if (ginGeneration !== generation) return;
+    void runGinCycle();
+  }, AGGREGATION_INTERVAL_MS);
 }
 
 export function stopGinScheduler(): void {
+  ginGeneration += 1;
+  if (initialAggregationTimer) {
+    clearTimeout(initialAggregationTimer);
+    initialAggregationTimer = null;
+  }
   if (aggregationTimer) {
     clearInterval(aggregationTimer);
     aggregationTimer = null;

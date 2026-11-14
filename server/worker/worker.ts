@@ -4,9 +4,14 @@
  *
  *   - Runs the selected schedulers only while holding the Postgres advisory
  *     lock (single leader). Standbys retry every 10 s.
- *   - On SIGTERM: stop scheduling new ticks, wait for the in-flight tick
- *     (≤ 100 s, observed as "no checked-out DB clients and no scheduler
- *     reporting inFlight"), release the lock, close the pool, exit.
+ *   - Losing the lock (health check / connection drop) immediately stops
+ *     every scheduler, including first-run timers that have not fired yet,
+ *     and fences in-flight ticks so they do no further leader-only work.
+ *     Re-acquiring leadership starts them exactly once.
+ *   - On SIGTERM: stop scheduling new ticks (and cancel deferred starts),
+ *     wait for the in-flight tick (≤ 100 s, observed as "no checked-out DB
+ *     clients and no scheduler reporting inFlight"), release the lock,
+ *     close the pool, exit.
  */
 import { createLogger } from '../../platform/core/logger';
 import type { SchedulerContext, SchedulerDefinition } from '../../platform/runtime/schedulers';
@@ -100,8 +105,11 @@ export class SchedulerWorker {
   }
 
   private stopSchedulers(reason: string): void {
-    if (!this.running) return;
+    // Always invoke stop() while shutting down, even if we already stepped
+    // down: a scheduler's untracked first-run timer must not fire after exit.
+    const shouldStop = this.running || this.shuttingDown;
     this.running = false;
+    if (!shouldStop) return;
     logger.info('Stopping schedulers', { reason });
     for (const s of this.opts.schedulers) {
       try {

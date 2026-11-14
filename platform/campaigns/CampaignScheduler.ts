@@ -45,6 +45,13 @@ function couldAnyContactBeInWindow(config: CampaignConfig): boolean {
 export class CampaignScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
+  /** Set by stop(); in-flight ticks check this before each leader-only step. */
+  private stopped = false;
+  /**
+   * Bumped on start and stop so a tick that began under a previous leadership
+   * generation cannot keep dialing after this instance is stopped or restarted.
+   */
+  private epoch = 0;
   private readonly config: Required<CampaignSchedulerConfig>;
 
   constructor(config: CampaignSchedulerConfig) {
@@ -57,18 +64,22 @@ export class CampaignScheduler {
 
   start(): void {
     if (this.timer) return;
+    this.stopped = false;
+    const epoch = ++this.epoch;
     logger.info('Campaign scheduler started', { pollIntervalMs: this.config.pollIntervalMs });
     this.timer = setInterval(() => {
-      this.tick().catch((err) => {
+      this.tick(epoch).catch((err) => {
         logger.error('Campaign scheduler tick error', { error: String(err) });
       });
     }, this.config.pollIntervalMs);
-    this.tick().catch((err) => {
+    this.tick(epoch).catch((err) => {
       logger.error('Campaign scheduler initial tick error', { error: String(err) });
     });
   }
 
   stop(): void {
+    this.stopped = true;
+    this.epoch += 1;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
@@ -76,17 +87,24 @@ export class CampaignScheduler {
     }
   }
 
-  private async tick(): Promise<void> {
-    if (this.running) return;
+  /** False once stop() runs or a newer start() generation takes over. */
+  private stillLeader(epoch: number): boolean {
+    return !this.stopped && epoch === this.epoch;
+  }
+
+  private async tick(epoch: number = this.epoch): Promise<void> {
+    if (this.running || !this.stillLeader(epoch)) return;
     this.running = true;
 
     try {
       const campaigns = await getRunningCampaigns();
+      if (!this.stillLeader(epoch)) return;
 
       const tenantDialingCounts = new Map<string, number>();
       const tenantMaxConcurrentCache = new Map<string, number>();
 
       for (const campaign of campaigns) {
+        if (!this.stillLeader(epoch)) return;
         if (!couldAnyContactBeInWindow(campaign.config)) {
           logger.debug('Campaign outside call window — skipping', {
             campaignId: campaign.id,
@@ -100,10 +118,12 @@ export class CampaignScheduler {
             campaign.tenantId,
             await getTenantActiveDialingCount(campaign.tenantId),
           );
+          if (!this.stillLeader(epoch)) return;
           tenantMaxConcurrentCache.set(
             campaign.tenantId,
             await getTenantMaxConcurrent(campaign.tenantId),
           );
+          if (!this.stillLeader(epoch)) return;
         }
         const tenantActive = tenantDialingCounts.get(campaign.tenantId)!;
         const tenantMaxConcurrent = tenantMaxConcurrentCache.get(campaign.tenantId)!;
@@ -122,6 +142,7 @@ export class CampaignScheduler {
         const retryDelayMinutes = campaign.config.retryDelayMinutes ?? 30;
 
         const campaignActive = await getActiveDialingCount(campaign.tenantId, campaign.id);
+        if (!this.stillLeader(epoch)) return;
         const campaignAvailable = maxConcurrent - campaignActive;
         const availableSlots = Math.min(campaignAvailable, tenantAvailable);
         if (availableSlots <= 0) {
@@ -140,6 +161,7 @@ export class CampaignScheduler {
         // SKIP LOCKED query doesn't immediately hand the same row back.
         const tickSkippedIds: string[] = [];
         for (let slot = 0; slot < availableSlots; slot++) {
+          if (!this.stillLeader(epoch)) return;
           const contact = await getNextPendingContact(
             campaign.tenantId,
             campaign.id,
@@ -147,6 +169,7 @@ export class CampaignScheduler {
             retryDelayMinutes,
             tickSkippedIds,
           );
+          if (!this.stillLeader(epoch)) return;
           if (!contact) break;
 
           const quietHours = evaluateQuietHours(contact.phoneNumber, campaign.config);
@@ -173,6 +196,7 @@ export class CampaignScheduler {
           }
           consecutiveQuietHourSkips = 0;
 
+          if (!this.stillLeader(epoch)) return;
           const dncCheck = await isContactOnDnc(campaign.tenantId, contact.phoneNumber);
           if (dncCheck.onDnc) {
             const reason = dncCheck.source === 'federal'
@@ -222,6 +246,7 @@ export class CampaignScheduler {
             fromNumber = verified.phoneNumber;
           }
 
+          if (!this.stillLeader(epoch)) return;
           const result = await dialContact({
             tenantId: campaign.tenantId,
             campaignId: campaign.id,

@@ -10,6 +10,9 @@ const revenueService = new WorkforceRevenueService();
 
 let optimizationTimer: ReturnType<typeof setInterval> | null = null;
 let revenueTimer: ReturnType<typeof setInterval> | null = null;
+let initialOptimizationTimer: ReturnType<typeof setTimeout> | null = null;
+/** Bumped on start/stop so a deferred first-run cannot fire after leadership loss. */
+let workforceGeneration = 0;
 
 const OPTIMIZATION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const REVENUE_INTERVAL_MS = 4 * 60 * 60 * 1000;
@@ -70,24 +73,30 @@ async function runRevenueCycle(): Promise<void> {
 }
 
 export function startWorkforceScheduler(): void {
+  if (optimizationTimer) return;
+  const generation = ++workforceGeneration;
   logger.info('Starting workforce scheduler', {
     optimizationIntervalMs: OPTIMIZATION_INTERVAL_MS,
     revenueIntervalMs: REVENUE_INTERVAL_MS,
   });
 
-  setTimeout(() => {
+  initialOptimizationTimer = setTimeout(() => {
+    initialOptimizationTimer = null;
+    if (workforceGeneration !== generation) return;
     runOptimizationCycle().catch((err) => {
       logger.error('Initial workforce optimization cycle failed', { error: String(err) });
     });
   }, 120_000);
 
   optimizationTimer = setInterval(() => {
+    if (workforceGeneration !== generation) return;
     runOptimizationCycle().catch((err) => {
       logger.error('Workforce optimization cycle failed', { error: String(err) });
     });
   }, OPTIMIZATION_INTERVAL_MS);
 
   revenueTimer = setInterval(() => {
+    if (workforceGeneration !== generation) return;
     runRevenueCycle().catch((err) => {
       logger.error('Workforce revenue cycle failed', { error: String(err) });
     });
@@ -95,6 +104,11 @@ export function startWorkforceScheduler(): void {
 }
 
 export function stopWorkforceScheduler(): void {
+  workforceGeneration += 1;
+  if (initialOptimizationTimer) {
+    clearTimeout(initialOptimizationTimer);
+    initialOptimizationTimer = null;
+  }
   if (optimizationTimer) {
     clearInterval(optimizationTimer);
     optimizationTimer = null;
