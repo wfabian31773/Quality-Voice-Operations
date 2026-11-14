@@ -31,7 +31,6 @@ export {
 } from './resolve';
 export type { StorageEnv } from './resolve';
 export type {
-  ObjectKeyOptions,
   ObjectStorageProvider,
   PutObjectOptions,
   SignedUploadUrl,

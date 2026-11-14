@@ -18,7 +18,7 @@ All services are in Blueprint project `qvo`, environment `production`, region **
 | `qvo-nightly` | cron `30 7 * * *` (UTC) | `cron` | `node --import tsx server/jobs/run.ts nightly` | n/a | single run | n/a | — |
 | `qvo-secrets` | env group | — | Created in the Dashboard **before** the Blueprint is applied (`sync: false` is not allowed in groups) | | | | |
 
-Build commands: `bash scripts/render/build.sh <api|voice|worker>`. Every build runs `npm ci --include=dev` (Render sets `NODE_ENV=production`, but `tsx` is a devDependency) through `scripts/ci-npm-ci.sh` (Replit lockfile-URL rewrite + retries). Only the **api** build also installs `client-app`, runs `validate:env:prod`, `verify:stripe-prices` and `vite build`. Node version: `.node-version` = `20`.
+Build commands: `bash scripts/render/build.sh <api|voice|worker>`. Every build runs `npm ci --include=dev` (Render sets `NODE_ENV=production`, but `tsx` is a devDependency) through `scripts/ci-npm-ci.sh` (Replit lockfile-URL rewrite + retries). Only the **api** build also installs `client-app`, runs `validate:env:prod`, `verify:stripe-prices` and `vite build`. Node version: `.node-version` = `22.23.5` (pinned in #167; CI and Render native Node both read this file).
 
 **Why `node --import tsx` and not `npx tsx`:** Render sends SIGTERM to the start command's process. `npm exec` does not forward it to the node grandchild, so with `npx tsx` the app never sees SIGTERM: the drain is skipped and the process is killed at the shutdown deadline. `node --import tsx` is one process and receives the signal directly (verified locally in PR-00).
 
@@ -168,7 +168,23 @@ Legend: **Azul** = currently Azul-owned or shared; needs a **QVO-owned replaceme
 `TICKETING_SYSTEM_URL`, `TICKETING_API_KEY`: **Azul. Drop**; boot warns if set.
 
 ### Object storage
-`PRIVATE_OBJECT_DIR`, `PUBLIC_OBJECT_SEARCH_PATHS`: Replit-only. Without a configured backend, dispatch upload/attachment/photo/route-export routes return **503 `storage not configured`**, voice-preview caching is skipped, and the route-export cleanup scheduler is skipped. **PR-00b** adds the `platform/storage` adapter (`OBJECT_STORAGE_PROVIDER=s3|local|replit`) and the S3 names `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` (plus optional `S3_FORCE_PATH_STYLE`, `S3_PREFIX`, `OBJECT_STORAGE_LOCAL_DIR`). Code and docs only — this PR does not provision a bucket and does not add the names to `render.yaml` / `qvo-secrets`. Set them on `qvo-api`, `qvo-voice`, and `qvo-worker` when the bucket exists. Full table: [`docs/ops/object-storage.md`](../ops/object-storage.md).
+
+`OBJECT_STORAGE_PROVIDER=s3` with Supabase Storage (S3-compatible). Names only — values live in `qvo-secrets` (or per-service env), never in this repo. Set them on `qvo-api`, `qvo-voice` (preview cache), and `qvo-worker` (route-export cleanup) when the bucket exists.
+
+| Name | Required for S3 | Notes |
+|---|---|---|
+| `OBJECT_STORAGE_PROVIDER` | yes (`s3`) | Without this, `PRIVATE_OBJECT_DIR` would win auto-detect |
+| `S3_BUCKET` | yes | Bucket for private objects |
+| `S3_ACCESS_KEY_ID` | yes | Access key id |
+| `S3_SECRET_ACCESS_KEY` | yes | Secret access key |
+| `S3_ENDPOINT` | no | Supabase: `https://<project-ref>.supabase.co/storage/v1/s3`. Omit for AWS S3 |
+| `S3_REGION` | no | Default `us-east-1` |
+| `S3_FORCE_PATH_STYLE` | no | Default `true` (needed for Supabase / MinIO). Set `false` for virtual-hosted AWS S3 |
+| `S3_PREFIX` | no | Optional key prefix inside the bucket |
+
+**`PRIVATE_OBJECT_DIR` must never be set on Render.** It is the Replit sidecar directory. While `OBJECT_STORAGE_PROVIDER` is unset it wins over the S3 names, so copying it onto Render would send uploads at a sidecar that does not exist. `PUBLIC_OBJECT_SEARCH_PATHS` is Replit-only as well. `OBJECT_STORAGE_PROVIDER=local` / `OBJECT_STORAGE_LOCAL_DIR` are for tests — Render's disk is ephemeral.
+
+Without a configured backend, dispatch upload/attachment/photo/route-export routes return **503 `storage not configured`**, voice-preview caching is skipped, and the route-export cleanup scheduler is skipped. Full table: [`docs/ops/object-storage.md`](../ops/object-storage.md).
 
 ### Validation at boot
 `scripts/validate-env.ts` decides the required set from `APP_ENV` + role and fails fast listing **names only**. Role `all` keeps the pre-PR-00 list. Production requirements per role:

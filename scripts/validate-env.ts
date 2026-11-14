@@ -139,7 +139,7 @@ const OPTIONAL_VARS: EnvVar[] = [
   { name: 'S3_FORCE_PATH_STYLE', required: 'development', purpose: 'Set to "false" to use virtual-hosted-style URLs. Default true (required for Supabase/MinIO)' },
   { name: 'S3_PREFIX', required: 'development', purpose: 'Optional key prefix inside the bucket' },
   { name: 'OBJECT_STORAGE_LOCAL_DIR', required: 'development', purpose: 'Local-disk root for OBJECT_STORAGE_PROVIDER=local (tests / offline dev). Default: os.tmpdir()/qvo-object-storage' },
-  { name: 'PRIVATE_OBJECT_DIR', required: 'development', purpose: 'Replit sidecar private object directory (legacy). Still accepted when OBJECT_STORAGE_PROVIDER is unset or replit' },
+  { name: 'PRIVATE_OBJECT_DIR', required: 'development', purpose: 'Replit sidecar private object directory (legacy). Never set on Render — it wins over S3 auto-detect while OBJECT_STORAGE_PROVIDER is unset' },
   { name: 'PUBLIC_OBJECT_SEARCH_PATHS', required: 'development', purpose: 'Replit sidecar public object search paths (comma-separated)' },
 ];
 
@@ -446,6 +446,15 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean; role?: 
         warnings.push(`${name} is required when OBJECT_STORAGE_PROVIDER=s3 (see docs/ops/object-storage.md)`);
       }
     }
+  }
+
+  // PRIVATE_OBJECT_DIR is still honored for auto-detect, so it must never be
+  // copied onto Render (it would steal traffic from S3). Warn only — do not
+  // strip or fail boot.
+  if (onRender && process.env.PRIVATE_OBJECT_DIR?.trim()) {
+    warnings.push(
+      'PRIVATE_OBJECT_DIR must never be set on Render (Replit sidecar only; it wins over S3 auto-detect). See docs/ops/object-storage.md',
+    );
   }
 
   if (!isKnownStorageProviderName(process.env.OBJECT_STORAGE_PROVIDER)) {
