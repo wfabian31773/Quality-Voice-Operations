@@ -901,6 +901,20 @@ describe('tickets.merge', () => {
     expect(closed).toMatchObject({ status: 'closed', parentTicketId: targetId });
   });
 
+  it('carries every source note, not only the newest 50', async () => {
+    const { tickets, sourceId, targetId, merge, run } = await twoTickets();
+    for (let i = 0; i < 55; i++) {
+      data(await run('tickets.add_note', ownerCtx({ idempotencyKey: `n-${i}` }), { ticketId: sourceId, note: `note ${i}` }));
+    }
+    data(await merge({ sourceId, targetId }));
+    const carried = tickets.state.activities.find(
+      (a) => a.ticketId === targetId && a.type === 'note' && a.metadata?.mergedFrom === sourceId,
+    );
+    expect(carried?.content).toContain('note 0');
+    expect(carried?.content).toContain('note 54');
+    expect(carried?.content?.split('\n\n')).toHaveLength(55);
+  });
+
   it('re-running the same merge is a no-op success', async () => {
     const { tickets, sourceId, targetId, merge } = await twoTickets();
     data(await merge({ sourceId, targetId }));

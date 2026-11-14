@@ -100,6 +100,7 @@ const SCHEMA = `
     contact_name TEXT DEFAULT '', contact_phone TEXT DEFAULT '', created_by_user_id TEXT REFERENCES users(id),
     kind TEXT NOT NULL DEFAULT 'message', callback_due_at TIMESTAMPTZ, intake JSONB NOT NULL DEFAULT '{}',
     urgency TEXT NOT NULL DEFAULT 'normal', source_call_ref VARCHAR(128),
+    parent_ticket_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
   CREATE TABLE ticket_activity_log (

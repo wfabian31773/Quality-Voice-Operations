@@ -56,6 +56,7 @@ export const MERGE = 'tickets.merge';
 
 /** Same roles as requireMiniSystemWrite on the ticket routes. */
 const WRITE_ROLES = ['tenant_owner', 'operations_manager'];
+/** Newest-N cap for `tickets.get` only. Merge uses `TicketsRepo.allNotes` so none are dropped. */
 const NOTES_LIMIT = 50;
 
 export interface TicketsActionDeps {
@@ -557,7 +558,7 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
       }
 
       const userId = actorUserId(ctx);
-      const sourceNotes = await repo.notes(source.id, NOTES_LIMIT);
+      const sourceNotes = await repo.allNotes(source.id);
       if (sourceNotes.length > 0) {
         await repo.addActivity({
           ticketId: target.id,

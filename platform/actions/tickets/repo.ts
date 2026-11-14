@@ -159,6 +159,8 @@ export interface TicketsRepo {
   update(id: string, patch: TicketPatch, now: Date): Promise<TicketRecord>;
   list(filter: ListFilter): Promise<TicketRecord[]>;
   notes(ticketId: string, limit: number): Promise<TicketNote[]>;
+  /** Every note on the ticket, oldest first. Merge uses this so none are dropped. */
+  allNotes(ticketId: string): Promise<TicketNote[]>;
   isTenantMember(userId: string): Promise<boolean>;
 }
 
@@ -574,6 +576,18 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
       [tenantId, ticketId, limit],
     );
     return rows.reverse().map((row) => ({ content: String(row.content ?? ''), createdAt: asDate(row.created_at) }));
+  },
+
+  async allNotes(ticketId) {
+    // Unbounded: merge must copy every note. `notes()` is the get-path 50-cap.
+    const { rows } = await tx.query(
+      `SELECT content, created_at
+         FROM ticket_activity_log
+        WHERE tenant_id = $1 AND ticket_id = $2 AND activity_type = 'note'
+        ORDER BY created_at ASC, id ASC`,
+      [tenantId, ticketId],
+    );
+    return rows.map((row) => ({ content: String(row.content ?? ''), createdAt: asDate(row.created_at) }));
   },
 
   async isTenantMember(userId) {

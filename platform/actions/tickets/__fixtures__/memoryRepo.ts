@@ -221,6 +221,11 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
           .slice(-limit)
           .map((activity) => ({ content: activity.content ?? '', createdAt: activity.now }));
       },
+      async allNotes(ticketId) {
+        return state.activities
+          .filter((activity) => activity.tenantId === tenantId && activity.ticketId === ticketId && activity.type === 'note')
+          .map((activity) => ({ content: activity.content ?? '', createdAt: activity.now }));
+      },
       async isTenantMember(userId) {
         return state.members.get(tenantId)?.has(userId) ?? false;
       },

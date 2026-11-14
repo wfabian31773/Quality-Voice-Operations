@@ -462,4 +462,32 @@ describe('sqlTicketsRepo on pg-mem', () => {
     );
     expect(Number(mergedAgain[0].n)).toBe(2);
   });
+
+  it('merge copies every source note, not only the newest 50', async () => {
+    const { committed: sourceCommit } = await open(
+      { kind: 'message', subject: 'many notes', customer: { phone: '555-010-7777' } },
+      agent({ callId: 'call-merge-notes-src' }),
+    );
+    const sourceId = ok<{ ticketId: string }>(sourceCommit).ticketId;
+    const { committed: targetCommit } = await open(
+      { kind: 'message', subject: 'keep', customer: { phone: '555-010-8888' } },
+      agent({ callId: 'call-merge-notes-tgt' }),
+    );
+    const targetId = ok<{ ticketId: string }>(targetCommit).ticketId;
+    for (let i = 0; i < 55; i++) {
+      await tx.query(
+        `INSERT INTO ticket_activity_log (tenant_id, ticket_id, activity_type, content, created_at) VALUES ($1, $2, 'note', $3, $4)`,
+        [TENANT, sourceId, `note ${i}`, new Date(NOW.getTime() + i * 1000)],
+      );
+    }
+    ok(await run('tickets.merge', owner({ idempotencyKey: 'merge-many-notes' }), { sourceId, targetId }));
+    const { rows: carried } = await tx.query<{ content: string }>(
+      `SELECT content FROM ticket_activity_log WHERE ticket_id = $1 AND activity_type = 'note'`,
+      [targetId],
+    );
+    expect(carried).toHaveLength(1);
+    expect(carried[0].content).toContain('note 0');
+    expect(carried[0].content).toContain('note 54');
+    expect(carried[0].content.split('\n\n')).toHaveLength(55);
+  });
 });
