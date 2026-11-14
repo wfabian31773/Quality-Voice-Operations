@@ -1,6 +1,6 @@
 # Public Webhook Endpoint Audit
 
-**Last reviewed:** 2026-04-25
+**Last reviewed:** 2026-11-14
 **Scope:** Every externally-reachable HTTP route under `server/` that does **not** require an authenticated session (no `requireAuth` / `requireApiKeyOrJwt`). For each one, this document records whether it verifies a provider signature or shared secret, whether it fails closed in production, and where the test coverage lives.
 
 The reference patterns are:
@@ -23,8 +23,11 @@ Any new public webhook **must** follow one of those three patterns and ship with
 | `POST /twilio/sms` | `server/voice-gateway/routes/twilio.ts` | Same middleware | ✅ | `tests/security/twilioSignatureMiddleware.test.ts` |
 | `POST /billing/stripe-webhook` | `server/admin-api/routes/billing.ts` | `constructStripeEvent` → `stripe.webhooks.constructEvent` against `STRIPE_WEBHOOK_SECRET`; raw body parser is mounted on this path only (`server/admin-api/app.ts`) | ✅ — `getWebhookSecret()` throws if `STRIPE_WEBHOOK_SECRET` is missing in production; missing/invalid signature returns 400 | `tests/security/stripeWebhook.test.ts` |
 | `POST /support/inbound` | `server/admin-api/routes/support.ts` | Shared secret `SUPPORT_INBOUND_SECRET` (`X-Webhook-Secret` header **or** `?secret=` query) | ✅ — production rejects with 401 if env var unset; rejects 401 on missing/mismatched secret | `tests/security/supportInboundWebhook.test.ts` |
+| `POST /book-demo/calendar-webhook` | `server/admin-api/routes/contact.ts` | Cal.com envelope (`t=<unix>,v1=<hex>` HMAC-SHA256 over `"<t>.<raw_body>"`) **or** Calendly (`Calendly-Webhook-Signature`, see dedicated row). Routed by header presence. Raw body parser is mounted on this path (`server/admin-api/app.ts`). | ✅ — production rejects with 500 if the matching secret is unset; 401 on missing/invalid/stale signature | `tests/marketing/calendlyBookingWebhook.test.ts`, `tests/marketing/calcomBookingWebhook.test.ts` |
+| `POST /book-demo/calendly-webhook` | `server/admin-api/routes/contact.ts` | `verifyCalendlySignature`: parse `t=` plus one or more `v1=` values from `Calendly-Webhook-Signature`; accept if **any** `v1` matches HMAC-SHA256 of `"<t>.<raw_body>"` (constant-time compare); reject missing/malformed headers and timestamps outside `CALENDLY_WEBHOOK_TOLERANCE_SECONDS` (default 300). | ✅ — production rejects with 500 if `CALENDLY_WEBHOOK_SECRET` (or the DB override) is unset; 401 on missing/invalid/stale signature. `CALENDLY_WEBHOOK_ALLOW_UNSIGNED=1` is ignored in production. | `tests/marketing/calendlyDedicatedBookingWebhook.test.ts`, `server/admin-api/routes/contact.test.ts` |
+| `POST /book-demo/calcom-native-webhook` | `server/admin-api/routes/contact.ts` | Cal.com native body-only HMAC (`X-Cal-Signature-256`); adapter re-signs into the envelope form and forwards to the canonical verifier. | ✅ — same secret / fail-closed contract as the Cal.com envelope path | `tests/marketing/calcomBookingWebhook.test.ts` |
 
-All true provider webhooks (Twilio, Stripe, inbound email) are covered by an explicit, fail-closed verification middleware **and** a security test in `tests/security/`. There are no unverified webhook routes as of this audit.
+All true provider webhooks (Twilio, Stripe, inbound email, Cal.com, Calendly) are covered by an explicit, fail-closed verification step **and** a test. There are no unverified webhook routes as of this audit.
 
 ---
 

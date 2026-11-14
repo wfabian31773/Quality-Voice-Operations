@@ -303,12 +303,14 @@ export function verifyCalcomNativeSignature(
 
 /**
  * Verify a Calendly v1 webhook signature header. The header looks like
- * `t=<unix_seconds>,v1=<hex_hmac>` and the HMAC is computed as
- * `HMAC_SHA256(secret, "<timestamp>.<raw_body>")`. We also reject signatures
- * older than 5 minutes to mitigate replay attacks (the same tolerance Calendly
- * recommends in their docs).
+ * `t=<unix_seconds>,v1=<hex_hmac>` and may list extra `v1=` values
+ * (Calendly sends more than one during signing-key rotation). The HMAC
+ * is computed as `HMAC_SHA256(secret, "<timestamp>.<raw_body>")` over the
+ * raw request body. We accept the request if ANY `v1` matches via a
+ * constant-time compare, and reject timestamps outside a 5-minute window
+ * to mitigate replay (the same tolerance Calendly recommends).
  */
-function verifyCalendlySignature(
+export function verifyCalendlySignature(
   rawBody: Buffer,
   signatureHeader: string | undefined,
   /**
@@ -335,10 +337,11 @@ function verifyCalendlySignature(
     return { ok: false, status: 401, error: 'Missing signature' };
   }
 
-  // Parse the comma-separated "t=...,v1=..." header. We tolerate extra parts
-  // (e.g. future v2 versions) and pick the one we know how to verify.
+  // Parse the comma-separated "t=...,v1=...,v1=..." header. Keep every v1
+  // (key rotation sends the old and new HMAC) and ignore unknown versions
+  // such as a future v2.
   let timestamp: string | null = null;
-  let v1Sig: string | null = null;
+  const v1Sigs: string[] = [];
   for (const segment of signatureHeader.split(',')) {
     const part = segment.trim();
     if (!part) continue;
@@ -346,14 +349,16 @@ function verifyCalendlySignature(
     if (eq < 0) continue;
     const key = part.slice(0, eq).trim();
     const value = part.slice(eq + 1).trim();
+    if (!value) continue;
     if (key === 't' && !timestamp) timestamp = value;
-    else if (key === 'v1' && !v1Sig) v1Sig = value;
+    else if (key === 'v1') v1Sigs.push(value);
   }
 
-  if (!timestamp || !v1Sig) {
+  if (!timestamp || v1Sigs.length === 0) {
     return { ok: false, status: 401, error: 'Invalid signature format' };
   }
-  if (!/^[a-f0-9]+$/i.test(v1Sig)) {
+  const hexSigs = v1Sigs.filter((sig) => /^[a-f0-9]+$/i.test(sig));
+  if (hexSigs.length === 0) {
     return { ok: false, status: 401, error: 'Invalid signature format' };
   }
   const tsSeconds = Number(timestamp);
@@ -374,18 +379,25 @@ function verifyCalendlySignature(
 
   const signedPayload = `${timestamp}.${rawBody.toString('utf8')}`;
   const expected = crypto.createHmac('sha256', secret).update(signedPayload).digest('hex');
-  try {
-    if (expected.length !== v1Sig.length) {
-      return { ok: false, status: 401, error: 'Invalid signature' };
+  const expectedBuf = Buffer.from(expected, 'hex');
+  // Compare every well-formed v1 so a leftover HMAC from key rotation
+  // cannot hide a valid one that follows it. timingSafeEqual is used for
+  // each compare; we do not return on the first match so slot position
+  // does not leak through early exit.
+  let matched = false;
+  for (const v1Sig of hexSigs) {
+    if (v1Sig.length !== expected.length) continue;
+    try {
+      const equal = crypto.timingSafeEqual(
+        expectedBuf,
+        Buffer.from(v1Sig.toLowerCase(), 'hex'),
+      );
+      if (equal) matched = true;
+    } catch {
+      // Decode/length mismatch — treat this candidate as a non-match.
     }
-    const equal = crypto.timingSafeEqual(
-      Buffer.from(expected, 'hex'),
-      Buffer.from(v1Sig.toLowerCase(), 'hex'),
-    );
-    return equal ? { ok: true } : { ok: false, status: 401, error: 'Invalid signature' };
-  } catch {
-    return { ok: false, status: 401, error: 'Invalid signature' };
   }
+  return matched ? { ok: true } : { ok: false, status: 401, error: 'Invalid signature' };
 }
 
 interface CalcomAttendee {

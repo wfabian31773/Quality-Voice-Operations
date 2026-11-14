@@ -395,7 +395,7 @@ The same `/book-demo/calendar-webhook` endpoint accepts Calendly's signed payloa
 - `CALENDLY_WEBHOOK_SECRET` — HMAC-SHA256 signing key. **Production rejects every request that lacks a valid `Calendly-Webhook-Signature` header**; missing secret returns HTTP 500.
 - `CALENDLY_WEBHOOK_TOLERANCE_SECONDS` *(optional, default 300)* — replay-protection window in seconds. Signatures older than this are rejected.
 
-> Calendly's signature header is `Calendly-Webhook-Signature: t=<unix_seconds>,v1=<hex_hmac>`. Our verifier computes `HMAC_SHA256(secret, "<t>.<raw_body>")` and rejects timestamps outside the tolerance window. There is a `CALENDLY_WEBHOOK_ALLOW_UNSIGNED=1` dev escape hatch that mirrors the Cal.com one — it is ignored in production.
+> Calendly's signature header is `Calendly-Webhook-Signature: t=<unix_seconds>,v1=<hex_hmac>` and may list more than one `v1=` value when Calendly is rotating signing keys. Our verifier HMAC-SHA256s the raw request body as `"<t>.<raw_body>"` and accepts the delivery if **any** `v1` matches (constant-time compare). Missing or malformed headers are rejected; timestamps outside the tolerance window (default 5 minutes) are rejected to stop replay. There is a `CALENDLY_WEBHOOK_ALLOW_UNSIGNED=1` dev escape hatch that mirrors the Cal.com one — it is ignored in production.
 
 ##### Create the Calendly webhook subscription
 

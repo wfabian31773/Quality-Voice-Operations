@@ -29,7 +29,11 @@ vi.mock('../services/demo-scheduler-settings', () => ({
   getPublicDemoSchedulerConfig: a.getPublicDemoSchedulerConfigMock,
 }));
 
-import router, { verifyCalcomSignature, verifyCalcomNativeSignature } from './contact';
+import router, {
+  verifyCalcomSignature,
+  verifyCalcomNativeSignature,
+  verifyCalendlySignature,
+} from './contact';
 
 function app() {
   const app = express();
@@ -86,6 +90,61 @@ describe('verifyCalcomSignature (exported)', () => {
   it('supports the scalar-signature + x-cal-timestamp form', () => {
     const sig = crypto.createHmac('sha256', SECRET).update(`${now}.${body.toString('utf8')}`).digest('hex');
     expect(verifyCalcomSignature(body, sig, String(now), now, SECRET)).toEqual({ ok: true });
+  });
+});
+
+describe('verifyCalendlySignature (exported)', () => {
+  const CALENDLY_SECRET = 'test_calendly_webhook_secret_value_123';
+  const body = Buffer.from('{"event":"invitee.created"}');
+  const now = () => Math.floor(Date.now() / 1000);
+  const hmac = (ts: number, secret = CALENDLY_SECRET) =>
+    crypto.createHmac('sha256', secret).update(`${ts}.${body.toString('utf8')}`).digest('hex');
+
+  it('accepts a valid single v1 signature', () => {
+    const ts = now();
+    expect(verifyCalendlySignature(body, `t=${ts},v1=${hmac(ts)}`, CALENDLY_SECRET)).toEqual({ ok: true });
+  });
+
+  it('accepts a second v1 when the first is wrong (key rotation)', () => {
+    const ts = now();
+    const header = `t=${ts},v1=${'0'.repeat(64)},v1=${hmac(ts)}`;
+    expect(verifyCalendlySignature(body, header, CALENDLY_SECRET)).toEqual({ ok: true });
+  });
+
+  it('rejects when every v1 is wrong', () => {
+    const ts = now();
+    const header = `t=${ts},v1=${'0'.repeat(64)},v1=${'a'.repeat(64)}`;
+    expect(verifyCalendlySignature(body, header, CALENDLY_SECRET)).toMatchObject({
+      ok: false,
+      status: 401,
+      error: 'Invalid signature',
+    });
+  });
+
+  it('rejects a missing signature header (401)', () => {
+    expect(verifyCalendlySignature(body, undefined, CALENDLY_SECRET)).toMatchObject({
+      ok: false,
+      status: 401,
+      error: 'Missing signature',
+    });
+  });
+
+  it('rejects a malformed header with no v1 (401)', () => {
+    const ts = now();
+    expect(verifyCalendlySignature(body, `t=${ts}`, CALENDLY_SECRET)).toMatchObject({
+      ok: false,
+      status: 401,
+      error: 'Invalid signature format',
+    });
+  });
+
+  it('rejects a stale timestamp (401)', () => {
+    const stale = now() - 10_000;
+    expect(verifyCalendlySignature(body, `t=${stale},v1=${hmac(stale)}`, CALENDLY_SECRET)).toMatchObject({
+      ok: false,
+      status: 401,
+      error: 'Signature timestamp out of tolerance',
+    });
   });
 });
 
