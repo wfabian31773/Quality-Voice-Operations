@@ -33,6 +33,8 @@ import {
   getInput,
   listInput,
   listOutput,
+  mergeInput,
+  mergeOutput,
   openCommitInput,
   openCommitOutput,
   openPrepareActionInput,
@@ -50,6 +52,7 @@ import {
 
 export const OPEN_PREPARE = 'tickets.open.prepare';
 export const OPEN_COMMIT = 'tickets.open.commit';
+export const MERGE = 'tickets.merge';
 
 /** Same roles as requireMiniSystemWrite on the ticket routes. */
 const WRITE_ROLES = ['tenant_owner', 'operations_manager'];
@@ -479,6 +482,7 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
       const tickets = await repoFor(tx, ctx.tenantId).list({
         status: input.status ?? 'open',
         kind: input.kind,
+        phone: input.phone ? normalizePhone(input.phone) : undefined,
         limit: input.limit ?? 50,
         now: ctx.now,
       });
@@ -504,13 +508,95 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
         intake: ticket.intake,
         callId: ticket.callId,
         sourceCallRef: ticket.sourceCallRef,
+        parentTicketId: ticket.parentTicketId,
         notes: notes.map((note) => ({ content: note.content, createdAt: note.createdAt.toISOString() })),
       };
       return actionOk(detail);
     },
   });
 
+  const merge = defineAction({
+    name: MERGE,
+    tool: 'tickets',
+    kind: 'write',
+    input: mergeInput,
+    output: mergeOutput,
+    permissions: { roles: WRITE_ROLES, mcpScope: 'qvo:admin' },
+    async run(ctx, input, tx) {
+      const repo = repoFor(tx, ctx.tenantId);
+      const [firstId, secondId] =
+        input.sourceId < input.targetId ? [input.sourceId, input.targetId] : [input.targetId, input.sourceId];
+      const first = await repo.get(firstId, { forUpdate: true });
+      const second = await repo.get(secondId, { forUpdate: true });
+      const source = input.sourceId === firstId ? first : second;
+      const target = input.targetId === firstId ? first : second;
+      if (!source) return actionFail('NOT_FOUND', 'Ticket not found', { field: 'sourceId' });
+      if (!target) return actionFail('NOT_FOUND', 'Ticket not found', { field: 'targetId' });
+
+      const alreadyMerged = source.parentTicketId === target.id;
+      if (alreadyMerged) {
+        return actionOk({ sourceId: source.id, targetId: target.id, merged: true as const });
+      }
+      if (source.parentTicketId) {
+        return actionFail('VALIDATION_FAILED', 'Source ticket was already merged away', {
+          field: 'sourceId',
+          callerSafeMessage: 'That ticket was already merged.',
+        });
+      }
+      if (target.parentTicketId) {
+        return actionFail('VALIDATION_FAILED', 'Target ticket was already merged away', {
+          field: 'targetId',
+          callerSafeMessage: 'That ticket was already merged.',
+        });
+      }
+      if (target.status === 'closed') {
+        return actionFail('VALIDATION_FAILED', 'Cannot merge into a closed ticket', {
+          field: 'targetId',
+          callerSafeMessage: 'That ticket is closed.',
+        });
+      }
+
+      const userId = actorUserId(ctx);
+      const sourceNotes = await repo.notes(source.id, NOTES_LIMIT);
+      if (sourceNotes.length > 0) {
+        await repo.addActivity({
+          ticketId: target.id,
+          actorUserId: userId,
+          type: 'note',
+          content: sourceNotes.map((note) => note.content).join('\n\n'),
+          metadata: { mergedFrom: source.id },
+          now: ctx.now,
+        });
+      }
+      await repo.addActivity({
+        ticketId: source.id,
+        actorUserId: userId,
+        type: 'merged',
+        content: `Merged into ${target.id}`,
+        fieldName: 'parent_ticket_id',
+        oldValue: '',
+        newValue: target.id,
+        metadata: { targetId: target.id },
+        now: ctx.now,
+      });
+      await repo.addActivity({
+        ticketId: target.id,
+        actorUserId: userId,
+        type: 'merged',
+        content: `Merged from ${source.id}`,
+        fieldName: 'parent_ticket_id',
+        oldValue: source.id,
+        newValue: '',
+        metadata: { sourceId: source.id },
+        now: ctx.now,
+      });
+      await repo.update(source.id, { status: 'closed', parentTicketId: target.id }, ctx.now);
+      await repo.update(target.id, {}, ctx.now);
+      return actionOk({ sourceId: source.id, targetId: target.id, merged: true as const });
+    },
+  });
+
   const fileFloor = createFloorAction({ repo: repoFor, decryptCallerNumber: deps.decryptCallerNumber });
 
-  return [openPrepare, openCommit, addNote, update, list, get, fileFloor];
+  return [openPrepare, openCommit, addNote, update, merge, list, get, fileFloor];
 }

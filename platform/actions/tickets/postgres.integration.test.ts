@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { postgresActionStore, runActionDefinition, type ActionContext, type ActionResult, type TenantTx } from '../core';
-import { createTicketsActions, OPEN_COMMIT, OPEN_PREPARE } from './actions';
+import { createTicketsActions, MERGE, OPEN_COMMIT, OPEN_PREPARE } from './actions';
 import { FILE_FLOOR, FLOOR_SUBJECT, floorIdempotencyKey } from './floor';
 
 const ADMIN_URL_RAW = process.env.DATABASE_URL ?? process.env.DATABASE_URL_PRIVILEGED ?? 'postgresql://ubuntu@127.0.0.1:5432/postgres';
@@ -395,6 +395,14 @@ describe.skipIf(!dbReachable)('tickets v2 postgres integration (migration 123)',
 
     const listed = ok<{ tickets: Array<{ id: string }> }>(await run('tickets.list', owner, { status: 'open', kind: 'callback' }));
     expect(listed.tickets.map((t) => t.id)).toEqual([firstData.ticketId]);
+    const byPhone = ok<{ tickets: Array<{ id: string }> }>(
+      await run('tickets.list', owner, { status: 'all', phone: '555-010-0142' }),
+    );
+    expect(byPhone.tickets.map((t) => t.id)).toEqual([firstData.ticketId]);
+    const byFormatted = ok<{ tickets: Array<{ id: string }> }>(
+      await run('tickets.list', owner, { phone: '+1 (555) 010-0142' }),
+    );
+    expect(byFormatted.tickets.map((t) => t.id)).toEqual([firstData.ticketId]);
 
     const updated = ok<{ status: string }>(
       await run('tickets.update', { ...owner, idempotencyKey: randomUUID() }, { ticketId: firstData.ticketId, status: 'resolved' }),
@@ -563,5 +571,250 @@ describe.skipIf(!dbReachable)('tickets v2 postgres integration (migration 123)',
     } finally {
       client.release();
     }
+  });
+
+  function actionRuntime() {
+    const registry = createTicketsActions();
+    const byName = new Map(registry.map((def) => [def.name, def]));
+    const runtime = {
+      store: postgresActionStore,
+      withTenantTx: <T>(id: string, fn: (tx: TenantTx) => Promise<T>) => withRlsTx(copyPool, id, fn),
+    };
+    const run = (name: string, ctx: ActionContext, input: unknown) =>
+      runActionDefinition(byName.get(name)!, ctx, input, runtime);
+    const ok = <T>(result: ActionResult): T => {
+      if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
+      return result.data as T;
+    };
+    return { run, ok };
+  }
+
+  async function openTicket(
+    run: ReturnType<typeof actionRuntime>['run'],
+    ok: ReturnType<typeof actionRuntime>['ok'],
+    ctx: ActionContext,
+    input: Record<string, unknown>,
+  ) {
+    const prepared = ok<{ confirmationToken: string; payloadHash: string }>(
+      await run(OPEN_PREPARE, { ...ctx, idempotencyKey: randomUUID() }, input),
+    );
+    return ok<{ ticketId: string; deduped: boolean }>(
+      await run(OPEN_COMMIT, ctx, {
+        confirmationToken: prepared.confirmationToken,
+        payloadHash: prepared.payloadHash,
+      }),
+    );
+  }
+
+  it('lists a caller\'s tickets by digits-normalized phone under RLS', async () => {
+    const tenantId = await insertTenant(copyPool);
+    const { run, ok } = actionRuntime();
+    const agent: ActionContext = {
+      tenantId,
+      actor: { type: 'agent', id: 'agent-1' },
+      now: new Date(),
+      tenantTimezone: 'America/New_York',
+      callId: randomUUID(),
+    };
+    const opened = await openTicket(run, ok, agent, {
+      kind: 'callback',
+      subject: 'the leaking sink',
+      customer: { name: 'Luis', phone: '+1 (555) 010-0142' },
+    });
+    await openTicket(run, ok, { ...agent, callId: randomUUID() }, {
+      kind: 'callback',
+      subject: 'someone else',
+      customer: { phone: '555-010-9999' },
+    });
+    const owner: ActionContext = {
+      tenantId,
+      actor: { type: 'system', id: 'test' },
+      now: new Date(),
+      tenantTimezone: 'America/New_York',
+    };
+    const listed = ok<{ tickets: Array<{ id: string }> }>(
+      await run('tickets.list', owner, { phone: '555-010-0142' }),
+    );
+    expect(listed.tickets.map((t) => t.id)).toEqual([opened.ticketId]);
+  });
+
+  it('two concurrent commits for the same call/kind/phone create one ticket', async () => {
+    const tenantId = await insertTenant(copyPool);
+    const callId = randomUUID();
+    await copyPool.query(`INSERT INTO call_sessions (id, tenant_id) VALUES ($1, $2)`, [callId, tenantId]);
+    const { run, ok } = actionRuntime();
+    const ctx: ActionContext = {
+      tenantId,
+      actor: { type: 'agent', id: 'agent-1' },
+      now: new Date(),
+      tenantTimezone: 'America/New_York',
+      callId,
+    };
+    const input = { kind: 'callback', subject: 'the leaking sink', customer: { name: 'Luis', phone: '555-010-0142' } };
+    const prepared = await Promise.all(
+      [0, 1].map(async (i) =>
+        ok<{ confirmationToken: string; payloadHash: string }>(
+          await run(OPEN_PREPARE, { ...ctx, idempotencyKey: randomUUID() }, { ...input, subject: `the leaking sink ${i}` }),
+        ),
+      ),
+    );
+    const results = await Promise.all(
+      prepared.map((p) =>
+        run(OPEN_COMMIT, ctx, { confirmationToken: p.confirmationToken, payloadHash: p.payloadHash }),
+      ),
+    );
+    const opened = results.map((r) => ok<{ ticketId: string; deduped: boolean }>(r));
+    expect(new Set(opened.map((r) => r.ticketId)).size).toBe(1);
+    expect(opened.filter((r) => r.deduped)).toHaveLength(1);
+    expect(opened.filter((r) => !r.deduped)).toHaveLength(1);
+    const { rows } = await copyPool.query(`SELECT count(*)::int AS n FROM tickets WHERE tenant_id = $1`, [tenantId]);
+    expect(rows[0].n).toBe(1);
+    const { rows: outbox } = await copyPool.query(
+      `SELECT count(*)::int AS n FROM ticket_outbox WHERE tenant_id = $1 AND event_type = 'ticket.opened'`,
+      [tenantId],
+    );
+    expect(outbox[0].n).toBe(1);
+  });
+
+  it('two concurrent updates on one ticket both serialize and both activities are recorded', async () => {
+    const tenantId = await insertTenant(copyPool);
+    const { run, ok } = actionRuntime();
+    const agent: ActionContext = {
+      tenantId,
+      actor: { type: 'agent', id: 'agent-1' },
+      now: new Date(),
+      tenantTimezone: 'America/New_York',
+      callId: randomUUID(),
+    };
+    const { ticketId } = await openTicket(run, ok, agent, {
+      kind: 'message',
+      subject: 'hours',
+      customer: { phone: '555-010-2222' },
+    });
+    const owner = (key: string): ActionContext => ({
+      tenantId,
+      actor: { type: 'user', id: 'owner-1', role: 'tenant_owner' },
+      now: new Date(),
+      tenantTimezone: 'America/New_York',
+      idempotencyKey: key,
+    });
+    const results = await Promise.all([
+      run('tickets.update', owner(randomUUID()), { ticketId, priority: 'high' }),
+      run('tickets.update', owner(randomUUID()), { ticketId, dueAt: '2026-10-17T18:00:00.000Z' }),
+    ]);
+    expect(results.every((r) => r.ok)).toBe(true);
+    const { rows } = await copyPool.query<{ activity_type: string; field_name: string }>(
+      `SELECT activity_type, field_name FROM ticket_activity_log WHERE tenant_id = $1 AND ticket_id = $2 AND activity_type IN ('priority_change', 'field_change') ORDER BY created_at`,
+      [tenantId, ticketId],
+    );
+    expect(rows.map((r) => r.activity_type).sort()).toEqual(['field_change', 'priority_change']);
+    const { rows: ticket } = await copyPool.query<{ priority: string; callback_due_at: Date }>(
+      `SELECT priority, callback_due_at FROM tickets WHERE id = $1`,
+      [ticketId],
+    );
+    expect(ticket[0].priority).toBe('high');
+    expect(ticket[0].callback_due_at.toISOString()).toBe('2026-10-17T18:00:00.000Z');
+  });
+
+  it('two concurrent merges of the same pair produce one merge', async () => {
+    const tenantId = await insertTenant(copyPool);
+    const { run, ok } = actionRuntime();
+    const agent = (callId: string): ActionContext => ({
+      tenantId,
+      actor: { type: 'agent', id: 'agent-1' },
+      now: new Date(),
+      tenantTimezone: 'America/New_York',
+      callId,
+    });
+    const source = await openTicket(run, ok, agent(randomUUID()), {
+      kind: 'message',
+      subject: 'dup',
+      customer: { phone: '555-010-3333' },
+    });
+    const target = await openTicket(run, ok, agent(randomUUID()), {
+      kind: 'message',
+      subject: 'original',
+      customer: { phone: '555-010-3333' },
+    });
+    const owner = (key: string): ActionContext => ({
+      tenantId,
+      actor: { type: 'user', id: 'owner-1', role: 'tenant_owner' },
+      now: new Date(),
+      tenantTimezone: 'America/New_York',
+      idempotencyKey: key,
+    });
+    const results = await Promise.all([
+      run(MERGE, owner(randomUUID()), { sourceId: source.ticketId, targetId: target.ticketId }),
+      run(MERGE, owner(randomUUID()), { sourceId: source.ticketId, targetId: target.ticketId }),
+    ]);
+    expect(results.every((r) => r.ok)).toBe(true);
+    const { rows } = await copyPool.query<{ status: string; parent_ticket_id: string | null }>(
+      `SELECT status, parent_ticket_id FROM tickets WHERE id = $1`,
+      [source.ticketId],
+    );
+    expect(rows[0]).toEqual({ status: 'closed', parent_ticket_id: target.ticketId });
+    const { rows: merged } = await copyPool.query(
+      `SELECT count(*)::int AS n FROM ticket_activity_log WHERE tenant_id = $1 AND activity_type = 'merged'`,
+      [tenantId],
+    );
+    expect(merged[0].n).toBe(2);
+  });
+
+  it("another tenant's ticket ids on get, add_note, update and merge return NOT_FOUND and write nothing", async () => {
+    const tenantA = await insertTenant(copyPool);
+    const tenantB = await insertTenant(copyPool);
+    const { run, ok } = actionRuntime();
+    const agentA: ActionContext = {
+      tenantId: tenantA,
+      actor: { type: 'agent', id: 'agent-1' },
+      now: new Date(),
+      tenantTimezone: 'America/New_York',
+      callId: randomUUID(),
+    };
+    const opened = await openTicket(run, ok, agentA, {
+      kind: 'callback',
+      subject: 'A only',
+      customer: { phone: '555-010-4444' },
+    });
+    const targetA = await openTicket(run, ok, { ...agentA, callId: randomUUID() }, {
+      kind: 'callback',
+      subject: 'A target',
+      customer: { phone: '555-010-4445' },
+    });
+    const counts = async () => {
+      const { rows: tickets } = await copyPool.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM tickets WHERE tenant_id = $1`,
+        [tenantA],
+      );
+      const { rows: activity } = await copyPool.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM ticket_activity_log WHERE tenant_id = $1`,
+        [tenantA],
+      );
+      return { tickets: tickets[0].n, activity: activity[0].n };
+    };
+    const before = await counts();
+    const ownerB = (key: string): ActionContext => ({
+      tenantId: tenantB,
+      actor: { type: 'user', id: 'owner-b', role: 'tenant_owner' },
+      now: new Date(),
+      tenantTimezone: 'America/New_York',
+      idempotencyKey: key,
+    });
+    const get = await run('tickets.get', ownerB(randomUUID()), { ticketId: opened.ticketId });
+    const note = await run('tickets.add_note', ownerB(randomUUID()), { ticketId: opened.ticketId, note: 'sneaky' });
+    const update = await run('tickets.update', ownerB(randomUUID()), { ticketId: opened.ticketId, status: 'closed' });
+    const merge = await run(MERGE, ownerB(randomUUID()), { sourceId: opened.ticketId, targetId: targetA.ticketId });
+    expect([get, note, update, merge].map((r) => (!r.ok ? r.error.code : 'ok'))).toEqual([
+      'NOT_FOUND',
+      'NOT_FOUND',
+      'NOT_FOUND',
+      'NOT_FOUND',
+    ]);
+    expect(await counts()).toEqual(before);
+    const { rows: stillOpen } = await copyPool.query<{ status: string }>(
+      `SELECT status FROM tickets WHERE id = $1`,
+      [opened.ticketId],
+    );
+    expect(stillOpen[0].status).toBe('open');
   });
 });
