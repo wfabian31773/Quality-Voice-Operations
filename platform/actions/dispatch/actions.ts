@@ -229,19 +229,6 @@ export function createDispatchActions(deps: DispatchActionDeps = {}): AnyActionD
         now: ctx.now,
       });
       const trigger = STATUS_TO_TRIGGER[updated.status];
-      if (trigger) {
-        try {
-          await notifyStatusChange({
-            tenantId: ctx.tenantId,
-            jobId: updated.id,
-            fromStatus: job.status,
-            toStatus: updated.status,
-            trigger,
-          });
-        } catch {
-          // Admin fires notifications without awaiting; a send failure must not roll back the write.
-        }
-      }
       return actionOk(
         {
           jobId: updated.id,
@@ -250,6 +237,18 @@ export function createDispatchActions(deps: DispatchActionDeps = {}): AnyActionD
         },
         trigger ? { effects: [{ type: `job.${updated.status === 'done' ? 'completed' : updated.status}`, payload: { jobId: updated.id, trigger } }] } : undefined,
       );
+    },
+    async afterCommit(ctx, result) {
+      if (!result.ok) return;
+      const trigger = STATUS_TO_TRIGGER[result.data.status];
+      if (!trigger) return;
+      await notifyStatusChange({
+        tenantId: ctx.tenantId,
+        jobId: result.data.jobId,
+        fromStatus: result.data.fromStatus,
+        toStatus: result.data.status,
+        trigger,
+      });
     },
   });
 

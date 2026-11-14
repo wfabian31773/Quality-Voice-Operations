@@ -210,7 +210,8 @@ async function execute<I, O>(
   const hash = requestHash({ input: parsed.data, callId: ctx.callId ?? null });
 
   try {
-    return await withTenantTx(ctx.tenantId, async (tx) => {
+    let ranFreshWrite = false;
+    const result = await withTenantTx(ctx.tenantId, async (tx) => {
       if (isWriteKind(def.kind) && idempotencyKey) {
         const claim = await store.beginIdempotency(tx, {
           tenantId: ctx.tenantId,
@@ -245,6 +246,7 @@ async function execute<I, O>(
             throw new Error(`Action ${def.name} returned data that did not match its output schema`);
           }
           result = { ...result, data: out.data };
+          ranFreshWrite = true;
         }
         if (!result.ok) {
           await rollbackSavepoint(tx, runSavepoint, 'action_run');
@@ -276,6 +278,14 @@ async function execute<I, O>(
       await writeAudit(store, tx, boundCtx, def.name, parsed.data, result, startedAt);
       return result;
     });
+    if (ranFreshWrite && result.ok && def.afterCommit) {
+      try {
+        await def.afterCommit(boundCtx, result);
+      } catch {
+        // After-commit effects (SMS, push) must not replace the committed result.
+      }
+    }
+    return result;
   } catch (err) {
     const failed = internalError(err) as ActionResult<O>;
     try {

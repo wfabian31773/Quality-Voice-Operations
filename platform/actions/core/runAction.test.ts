@@ -11,7 +11,7 @@ import { actionFail, actionOk } from './errors';
 import { createMemoryStore } from './memoryStore';
 import { consumeProposal, createProposal } from './proposals';
 import { runAction, runActionDefinition } from './runAction';
-import type { ActionContext, ActionResult, Actor, AnyActionDefinition } from './types';
+import type { ActionContext, ActionResult, Actor, AnyActionDefinition, TenantTx } from './types';
 
 const NOW = new Date('2026-10-17T15:00:00.000Z');
 
@@ -150,6 +150,44 @@ describe('runAction', () => {
     expect(first).toEqual({ ok: true, data: { echoed: 'booked' } });
     expect(second).toEqual(first);
     expect(side.count).toBe(1);
+  });
+
+  it('runs afterCommit only after the tenant transaction commits, and not on replay', async () => {
+    const order: string[] = [];
+    const def = defineAction({
+      name: 'core.after.commit',
+      tool: 'business',
+      kind: 'write',
+      input: z.object({ message: z.string() }),
+      output: z.object({ echoed: z.string() }),
+      permissions: { roles: ['owner'] },
+      run: async (_c, input) => {
+        order.push('run');
+        return actionOk({ echoed: input.message });
+      },
+      afterCommit: async () => {
+        order.push('after');
+      },
+    });
+    const store = createMemoryStore();
+    const deps = {
+      store,
+      registry: [def],
+      withTenantTx: async <T>(tenantId: string, fn: (tx: TenantTx) => Promise<T>): Promise<T> => {
+        order.push('begin');
+        const result = await store.withTenantTx(tenantId, fn);
+        order.push('commit');
+        return result;
+      },
+    };
+    const input = { message: 'notify' };
+    const first = await runAction('core.after.commit', ctx({ idempotencyKey: 'after-1' }), input, deps);
+    expect(first.ok).toBe(true);
+    expect(order).toEqual(['begin', 'run', 'commit', 'after']);
+    order.length = 0;
+    const replayed = await runAction('core.after.commit', ctx({ idempotencyKey: 'after-1' }), input, deps);
+    expect(replayed).toEqual(first);
+    expect(order).toEqual(['begin', 'commit']);
   });
 
   it('rejects a reused key with a different payload', async () => {
