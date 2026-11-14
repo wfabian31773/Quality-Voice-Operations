@@ -35,7 +35,7 @@ No production secrets are used. The `qvo_app` password in
 | `npm run db:verify-rls` | Cross-tenant SELECT + INSERT probes (`scripts/verify-rls.ts`). Uses SSL only when `APP_ENV` is not `development`, same as `db:migrate`, so the GitHub Actions `postgres:16` service (TLS off) can connect. |
 | `npm run test:security:isolation` | `tenantIsolation`, `crossTenantEndpoints`, `adminEndpointGuard`. |
 | `npm run test:security:rls` | `qvoAppRlsRealDb` (needs `QVO_RLS_TEST_DATABASE_URL`) and the 117-remediation SQL-shape tests. |
-| `npm run test:security:db` | Isolation + RLS suites together (what CI runs). |
+| `npm run test:security:db` | Isolation + RLS suites together (what CI runs). Files run one at a time (`--no-file-parallelism`) because `qvoAppRlsRealDb` briefly installs a leaky policy / BYPASSRLS on the shared database. |
 
 ### One-shot local run against a disposable Postgres
 

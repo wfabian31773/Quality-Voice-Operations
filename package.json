@@ -89,7 +89,7 @@
     "db:verify-rls": "tsx scripts/verify-rls.ts",
     "test:security:isolation": "vitest run tests/security/tenantIsolation.test.ts tests/security/crossTenantEndpoints.test.ts tests/security/adminEndpointGuard.test.ts",
     "test:security:rls": "vitest run tests/security/qvoAppRlsRealDb.test.ts tests/security/tenantRlsRemediationMigration.test.ts",
-    "test:security:db": "vitest run tests/security/tenantIsolation.test.ts tests/security/crossTenantEndpoints.test.ts tests/security/adminEndpointGuard.test.ts tests/security/qvoAppRlsRealDb.test.ts tests/security/tenantRlsRemediationMigration.test.ts",
+    "test:security:db": "vitest run --no-file-parallelism tests/security/tenantIsolation.test.ts tests/security/crossTenantEndpoints.test.ts tests/security/adminEndpointGuard.test.ts tests/security/qvoAppRlsRealDb.test.ts tests/security/tenantRlsRemediationMigration.test.ts",
     "verify:stripe-prices": "tsx scripts/verify-stripe-prices.ts",
     "validate:env": "tsx scripts/validate-env.ts",
     "validate:env:prod": "APP_ENV=production tsx scripts/validate-env.ts --skip-db",
