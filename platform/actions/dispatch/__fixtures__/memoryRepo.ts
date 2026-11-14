@@ -107,9 +107,12 @@ export function createMemoryDispatchRepo(): { state: MemoryDispatchState; repo: 
             const openA = isOpenJobStatus(a.status) ? 0 : 1;
             const openB = isOpenJobStatus(b.status) ? 0 : 1;
             if (openA !== openB) return openA - openB;
-            const startA = (a.etaStart ?? a.scheduledAt ?? a.createdAt).getTime();
-            const startB = (b.etaStart ?? b.scheduledAt ?? b.createdAt).getTime();
-            return startA - startB;
+            if (openA === 0) {
+              const startA = (a.etaStart ?? a.scheduledAt ?? a.createdAt).getTime();
+              const startB = (b.etaStart ?? b.scheduledAt ?? b.createdAt).getTime();
+              return startA - startB;
+            }
+            return b.createdAt.getTime() - a.createdAt.getTime();
           })
           .map(({ tenantId: _t, normalizedAddress: _n, ...job }) => job);
       },

@@ -350,4 +350,66 @@ describe.skipIf(!dbReachable)('dispatch actions on Postgres', () => {
     expect(bad.code).toBe('VALIDATION_FAILED');
     expect(await jobs(tenantId)).toHaveLength(0);
   });
+
+  it('rejects an ETA at or before the stored window start', async () => {
+    const tenantId = await insertTenant('eta');
+    const p = await prepare(tenantId);
+    const { jobId } = data<{ jobId: string }>(
+      await act(CREATE_JOB_COMMIT, ctx(tenantId), { confirmationToken: p.confirmationToken }),
+    );
+    data(await act(UPDATE_STATUS, owner(tenantId, { idempotencyKey: 'e0' }), { jobId, status: 'assigned' }));
+    const early = errorOf(
+      await act(UPDATE_STATUS, owner(tenantId, { idempotencyKey: 'e1' }), {
+        jobId,
+        status: 'en_route',
+        eta: '2026-10-20T12:00:00-04:00',
+      }),
+    );
+    expect(early).toMatchObject({ code: 'VALIDATION_FAILED', field: 'eta' });
+    const atStart = errorOf(
+      await act(UPDATE_STATUS, owner(tenantId, { idempotencyKey: 'e2' }), {
+        jobId,
+        status: 'en_route',
+        eta: WINDOW.start,
+      }),
+    );
+    expect(atStart).toMatchObject({ code: 'VALIDATION_FAILED', field: 'eta' });
+    expect((await jobs(tenantId))[0].eta_end.toISOString()).toBe(new Date(WINDOW.end).toISOString());
+  });
+
+  it('returns the latest terminal job when a repeat customer has no open jobs', async () => {
+    const tenantId = await insertTenant('latest');
+    const firstTok = await prepare(tenantId);
+    const { jobId: olderId } = data<{ jobId: string }>(
+      await act(CREATE_JOB_COMMIT, ctx(tenantId), { confirmationToken: firstTok.confirmationToken }),
+    );
+    const laterWindow = { start: '2026-10-21T13:00:00-04:00', end: '2026-10-21T17:00:00-04:00' };
+    const secondTok = await prepare(
+      tenantId,
+      jobInput({ window: laterWindow, problem: 'Return visit' }),
+      { callId: 'CA-2' },
+    );
+    const { jobId: newerId } = data<{ jobId: string }>(
+      await act(CREATE_JOB_COMMIT, ctx(tenantId, { callId: 'CA-2' }), { confirmationToken: secondTok.confirmationToken }),
+    );
+    let key = 0;
+    const complete = async (jobId: string) => {
+      for (const status of ['assigned', 'in_progress', 'completed'] as const) {
+        data(await act(UPDATE_STATUS, owner(tenantId, { idempotencyKey: `c${++key}` }), { jobId, status }));
+      }
+    };
+    await complete(olderId);
+    await complete(newerId);
+    await pool.query(`UPDATE dispatch_jobs SET created_at = created_at - INTERVAL '1 day' WHERE id = $1`, [olderId]);
+    await pool.query(`INSERT INTO call_sessions (id, tenant_id, caller_number) VALUES ($1, $2, $3)`, [
+      'CA-latest',
+      tenantId,
+      PHONE,
+    ]);
+    const found = data<{ status: string; window: { start: string } }>(
+      await act(GET_JOB_STATUS, ctx(tenantId, { callId: 'CA-latest' }), { phone: PHONE, name: 'Luis' }),
+    );
+    expect(found.status).toBe('completed');
+    expect(found.window.start).toBe(new Date(laterWindow.start).toISOString());
+  });
 });

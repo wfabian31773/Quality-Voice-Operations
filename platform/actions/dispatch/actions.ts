@@ -194,11 +194,18 @@ export function createDispatchActions(deps: DispatchActionDeps = {}): AnyActionD
           callerSafeMessage: "That status change isn't allowed.",
         });
       }
+      const etaEnd = input.eta ? new Date(input.eta) : undefined;
+      if (etaEnd) {
+        const windowStart = job.etaStart ?? job.scheduledAt ?? job.createdAt;
+        if (!(etaEnd.getTime() > windowStart.getTime())) {
+          return actionFail('VALIDATION_FAILED', 'ETA must be after the job window start', { field: 'eta' });
+        }
+      }
       const updated = await repo.updateStatus({
         jobId: job.id,
         fromStatus: job.status,
         toStatus: input.status,
-        etaEnd: input.eta ? new Date(input.eta) : undefined,
+        etaEnd,
         now: ctx.now,
       });
       if (!updated) {

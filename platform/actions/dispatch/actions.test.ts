@@ -239,10 +239,27 @@ describe('dispatch.update_status', () => {
     ]);
   });
 
+  it('rejects an ETA at or before the job window start', async () => {
+    const { update } = await opened();
+    expectFail(await update({ status: 'assigned', eta: '2026-10-20T12:00:00-04:00' }), 'VALIDATION_FAILED', 'eta');
+    expectFail(await update({ status: 'assigned', eta: WINDOW.start }), 'VALIDATION_FAILED', 'eta');
+    expect(data(await update({ status: 'assigned' })).status).toBe('assigned');
+  });
+
   it('rejects a disallowed transition with CONFLICT', async () => {
     const { update } = await opened();
     expectFail(await update({ status: 'done' }), 'CONFLICT', 'status');
     expectFail(await update({ status: 'en_route' }), 'CONFLICT', 'status');
+  });
+
+  it('rejects an ETA at or before the stored window start', async () => {
+    const { dispatch, update } = await opened();
+    data(await update({ status: 'assigned' }));
+    expectFail(await update({ status: 'en_route', eta: '2026-10-20T12:00:00-04:00' }), 'VALIDATION_FAILED', 'eta');
+    expectFail(await update({ status: 'en_route', eta: WINDOW.start }), 'VALIDATION_FAILED', 'eta');
+    expect(dispatch.state.jobs[0].etaEnd?.toISOString()).toBe(new Date(WINDOW.end).toISOString());
+    expect(data(await update({ status: 'en_route', eta: '2026-10-20T14:30:00-04:00' })).status).toBe('en_route');
+    expect(dispatch.state.jobs[0].etaEnd?.toISOString()).toBe('2026-10-20T18:30:00.000Z');
   });
 
   it('returns NOT_FOUND for a missing or foreign job', async () => {
@@ -313,5 +330,30 @@ describe('dispatch.get_job_status', () => {
     await prepareAndCommit(run);
     const found = data(await run(GET_JOB_STATUS, ownerCtx(), { phone: PHONE, name: 'Luis Garcia' }));
     expect(found.status).toBe('pending');
+  });
+
+  it('returns the latest terminal job when a repeat customer has no open jobs', async () => {
+    const { dispatch, run } = setup({ callerMatch: true });
+    const first = data<Committed>((await prepareAndCommit(run)).committed);
+    const laterWindow = { start: '2026-10-21T13:00:00-04:00', end: '2026-10-21T17:00:00-04:00' };
+    const second = data<Committed>(
+      (await prepareAndCommit(run, jobInput({ window: laterWindow, problem: 'Return visit' }), agentCtx({ callId: 'call-2' })))
+        .committed,
+    );
+    let key = 0;
+    const complete = async (jobId: string) => {
+      for (const status of ['assigned', 'in_progress', 'completed'] as const) {
+        data(await run(UPDATE_STATUS, ownerCtx({ idempotencyKey: `c${++key}` }), { jobId, status }));
+      }
+    };
+    await complete(first.jobId);
+    await complete(second.jobId);
+    const older = dispatch.state.jobs.find((j) => j.id === first.jobId)!;
+    older.createdAt = new Date(NOW.getTime() - 86_400_000);
+    const found = data<{ status: string; window: { start: string } }>(
+      await run(GET_JOB_STATUS, agentCtx(), { phone: PHONE, name: 'Luis' }),
+    );
+    expect(found.status).toBe('completed');
+    expect(found.window.start).toBe(new Date(laterWindow.start).toISOString());
   });
 });

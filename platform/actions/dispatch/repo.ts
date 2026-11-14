@@ -234,8 +234,15 @@ export const sqlDispatchRepo: DispatchRepoFactory = (tx, tenantId) => ({
           )
         ORDER BY
           CASE WHEN status NOT IN ('completed', 'cancelled', 'done', 'incomplete') THEN 0 ELSE 1 END,
-          COALESCE(eta_start, scheduled_at, created_at) ASC,
-          created_at ASC`,
+          CASE
+            WHEN status NOT IN ('completed', 'cancelled', 'done', 'incomplete')
+            THEN COALESCE(eta_start, scheduled_at, created_at)
+          END ASC NULLS LAST,
+          CASE
+            WHEN status IN ('completed', 'cancelled', 'done', 'incomplete')
+            THEN created_at
+          END DESC NULLS LAST,
+          created_at DESC`,
       [tenantId, e164, digits, digits11],
     );
     return rows.map(mapJob);
