@@ -1,7 +1,7 @@
 import { getPlatformPool, runWithRestrictedScope } from '../platform/db';
 import { validateBillingConfig } from '../platform/billing/stripe/plans';
 import { isKnownStorageProviderName, OBJECT_STORAGE_PROVIDERS } from '../platform/storage/types';
-import { resolveProcessRole, isRenderRuntime, REPLIT_ONLY_ENV_NAMES, type ProcessRole } from '../platform/runtime/processRole';
+import { resolveProcessRole, isRenderRuntime, isReplitRuntime, REPLIT_ONLY_ENV_NAMES, type ProcessRole } from '../platform/runtime/processRole';
 
 type SplitRole = Exclude<ProcessRole, 'all'>;
 
@@ -103,7 +103,7 @@ const OPTIONAL_VARS: EnvVar[] = [
   { name: 'OPENAI_API_KEY', required: 'development', purpose: 'Optional OpenAI key for non-voice utilities such as embeddings and TTS preview. Live calls use XAI_API_KEY.' },
   { name: 'TURNSTILE_SITE_KEY', required: 'development', purpose: 'Cloudflare Turnstile site key served to the signup form at runtime via GET /auth/signup-config. Prefer this over VITE_TURNSTILE_SITE_KEY so the widget can render without a frontend rebuild. The form fails closed when captcha is required and no site key is available.' },
   { name: 'VITE_TURNSTILE_SITE_KEY', required: 'development', purpose: 'Build-time fallback Cloudflare Turnstile site key inlined into the signup bundle. Used when TURNSTILE_SITE_KEY is unset.' },
-  { name: 'TURNSTILE_ALLOWED_HOSTNAMES', required: 'development', purpose: 'Optional comma-separated hostnames accepted from Cloudflare Turnstile siteverify. Defaults to qualityvoiceoperations.com, api.qualityvoiceoperations.com, and voice.qualityvoiceoperations.com. Replaces the default list when set.' },
+  { name: 'TURNSTILE_ALLOWED_HOSTNAMES', required: 'development', purpose: 'Comma-separated hostnames accepted from Cloudflare Turnstile siteverify after a successful token check (signup and book-demo). Required in production for the API/web process that serves signup (Render qvo-api). Not in qvo-secrets; qvo-voice, qvo-worker, and qvo-nightly must boot without it. When unset locally or on Replit, hostname is not checked and a one-time warning is logged. Example: api.qualityvoiceoperations.com,qualityvoiceoperations.com,voice.qualityvoiceoperations.com.' },
   { name: 'ENCRYPTION_MASTER_KEY', required: 'development', purpose: 'Dedicated 32+ byte master key for platform-admin TOTP secrets and other encrypted application settings; falls back to CONNECTOR_ENCRYPTION_KEY when unset' },
   { name: 'CALL_EVENTS_PARTITION_PRUNING_ENABLED', required: 'development', purpose: 'Explicit destructive-retention opt-in; only set to true after the call-events retention policy is approved' },
   { name: 'ADMIN_API_PORT', required: 'development', purpose: 'Admin API listen port (default: 3002)' },
@@ -426,6 +426,22 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean; role?: 
         warnings.push(`${name} is set but ignored on Render (Replit-only)`);
       }
     }
+  }
+
+  // Signup CAPTCHA hostname pin: required for the API/web process in
+  // production-like environments, except Replit. Not in qvo-secrets;
+  // voice/worker/nightly boot without it.
+  if (
+    (role === 'api' || role === 'all')
+    && (isProd || onRender)
+    && !isReplitRuntime()
+    && !process.env.TURNSTILE_ALLOWED_HOSTNAMES?.trim()
+  ) {
+    console.log('\nTurnstile:');
+    console.log(
+      '  FAIL  TURNSTILE_ALLOWED_HOSTNAMES — required in production for the API process that serves signup (qvo-api). Not required on qvo-voice, qvo-worker, or qvo-nightly.',
+    );
+    missing.push('TURNSTILE_ALLOWED_HOSTNAMES');
   }
 
   if (isProd || onRender) {

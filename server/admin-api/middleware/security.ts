@@ -19,6 +19,7 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import type { CookieOptions } from 'express';
 import type { CorsOptions } from 'cors';
+import { isReplitRuntime, resolveProcessRole } from '../../../platform/runtime/processRole';
 
 const PRODUCTION_LIKE_ENVS = new Set(['production', 'staging']);
 
@@ -247,6 +248,20 @@ export function assertProductionSecrets(): void {
   if (turnstileSecret && CLOUDFLARE_TURNSTILE_DUMMY_SECRETS.has(turnstileSecret)) {
     errors.push(
       'TURNSTILE_SECRET_KEY is a Cloudflare test/dummy secret; set a real Turnstile secret in production',
+    );
+  }
+
+  // Production-like signup processes must set this list. Replit keeps the
+  // unset bypass. Voice/worker/nightly do not serve signup and must boot
+  // without the name (it is per-service on qvo-api, not in qvo-secrets).
+  const processRole = resolveProcessRole();
+  if (
+    !isReplitRuntime()
+    && (processRole === 'api' || processRole === 'all')
+    && !(process.env.TURNSTILE_ALLOWED_HOSTNAMES ?? '').trim()
+  ) {
+    errors.push(
+      'TURNSTILE_ALLOWED_HOSTNAMES is required in production so signup CAPTCHA tokens from other sites are rejected',
     );
   }
 

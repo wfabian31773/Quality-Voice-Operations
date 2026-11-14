@@ -7,6 +7,7 @@ import {
   resolveVoiceGatewayBaseUrl,
   resolveVoicePublicBaseUrl,
   isRenderRuntime,
+  isReplitRuntime,
   resolveVoiceGatewayProxyTarget,
 } from './processRole';
 
@@ -49,6 +50,9 @@ describe('Render guards', () => {
 
     const render: Record<string, string | undefined> = { RENDER: 'true', REPLIT_DEV_DOMAIN: 'x', REPL_ID: 'y' };
     expect(isRenderRuntime(render)).toBe(true);
+    expect(isReplitRuntime(replit)).toBe(true);
+    expect(isReplitRuntime(render)).toBe(false);
+    expect(isReplitRuntime({})).toBe(false);
     expect(scrubReplitFallbacks(render)).toEqual(['REPLIT_DEV_DOMAIN', 'REPL_ID']);
     expect(render.REPLIT_DEV_DOMAIN).toBeUndefined();
   });

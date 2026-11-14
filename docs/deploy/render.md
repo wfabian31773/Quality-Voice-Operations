@@ -155,6 +155,7 @@ Legend: **Azul** = currently Azul-owned or shared; needs a **QVO-owned replaceme
 - `ALLOWED_ORIGINS` (api, voice): add the api/voice hosts.
 - `ADMIN_JWT_SECRET`, `ADMIN_INTERNAL_TOKEN` (required for role `voice`), `CONNECTOR_ENCRYPTION_KEY`, `ENCRYPTION_MASTER_KEY`, `QVO_PII_LOOKUP_HMAC_KEY`, `QVO_PII_LOOKUP_HMAC_KEY_VERSION`, `QVO_PII_LOOKUP_HMAC_PREVIOUS_KEY` / `_VERSION`, `DISPATCH_COMPLETION_PHOTO_SECRET`, `SUPPORT_UNSUBSCRIBE_SECRET`: **copy the existing values exactly** (encrypted data and JWTs depend on them); confirm none is shared with Azul apps.
 - `TURNSTILE_SECRET_KEY`, `TURNSTILE_SITE_KEY`, `VITE_TURNSTILE_SITE_KEY` (build-time): **?** Cloudflare owner; add the api hostname to the widget.
+- `TURNSTILE_ALLOWED_HOSTNAMES`: comma-separated hostnames accepted from Turnstile siteverify on signup and book-demo. **Set only on `qvo-api`** (per-service; not in `qvo-secrets`). `qvo-voice`, `qvo-worker`, and `qvo-nightly` share the codebase and the secrets group and must boot without this name. Production-like API/web processes fail closed if it is missing (including a mistyped `RENDER` value). If unset locally or on Replit, hostname is not checked and a one-time warning is logged. The forms also send an explicit widget `action` (`signup` / `book-demo`) that the API checks after siteverify.
 - `REPLIT_DEV_DOMAIN`, `REPL_ID`: Replit-only. **Drop** (ignored on Render).
 
 ### Billing (Stripe)
@@ -193,6 +194,7 @@ Without a configured backend, dispatch upload/attachment/photo/route-export rout
 - **worker:** DB, Twilio, `ADMIN_JWT_SECRET`, Stripe, SMTP, `APP_URL`, `VOICE_GATEWAY_BASE_URL`, `ADMIN_API_BASE_URL`, `WORKER_LEADER_DB_URL`, encryption/HMAC keys.
 - **cron:** DB, Stripe, SMTP, `APP_URL`, encryption/HMAC keys.
 - **Render (any role):** `APP_URL` and `VOICE_GATEWAY_BASE_URL`. Azul-only names produce warnings, not failures.
+- **API/web process that serves signup (Render `qvo-api`, role `api`; also role `all` in production-like environments that are not Replit):** `TURNSTILE_ALLOWED_HOSTNAMES`. Do not put it in `qvo-secrets`. `qvo-voice`, `qvo-worker`, and `qvo-nightly` do not need it and will not fail boot without it. Replit keeps the unset bypass.
 
 ---
 

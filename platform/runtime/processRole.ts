@@ -40,6 +40,12 @@ export function isRenderRuntime(env: Env = process.env): boolean {
   return env.RENDER === 'true';
 }
 
+/** Replit (the fallback host) sets at least one of these. Never true on Render. */
+export function isReplitRuntime(env: Env = process.env): boolean {
+  if (isRenderRuntime(env)) return false;
+  return Boolean(env.REPLIT_DEV_DOMAIN?.trim() || env.REPL_ID?.trim());
+}
+
 function parsePort(raw: string | undefined): number | null {
   if (!raw?.trim()) return null;
   const n = parseInt(raw, 10);

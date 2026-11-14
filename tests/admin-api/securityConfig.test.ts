@@ -17,6 +17,11 @@ function resetEnv(): void {
   process.env = { ...ORIGINAL_ENV };
   delete process.env.ALLOWED_ORIGINS;
   delete process.env.TURNSTILE_SECRET_KEY;
+  delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+  delete process.env.RENDER;
+  delete process.env.QVO_PROCESS_ROLE;
+  delete process.env.REPLIT_DEV_DOMAIN;
+  delete process.env.REPL_ID;
   delete process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET;
   delete process.env.APP_ENV;
   delete process.env.NODE_ENV;
@@ -261,6 +266,7 @@ describe('assertProductionSecrets()', () => {
     expect(err?.message).toMatch(/ADMIN_JWT_SECRET/);
     expect(err?.message).toMatch(/ALLOWED_ORIGINS/);
     expect(err?.message).toMatch(/TURNSTILE_SECRET_KEY/);
+    expect(err?.message).toMatch(/TURNSTILE_ALLOWED_HOSTNAMES/);
   });
 
   it('passes when every required secret is present in production', async () => {
@@ -268,6 +274,7 @@ describe('assertProductionSecrets()', () => {
     process.env.ADMIN_JWT_SECRET = 'jwt';
     process.env.ALLOWED_ORIGINS = 'https://app.example.com';
     process.env.TURNSTILE_SECRET_KEY = 'turnstile';
+    process.env.TURNSTILE_ALLOWED_HOSTNAMES = 'api.example.com';
     process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 'email-hook';
     const { assertProductionSecrets } = await loadSecurity();
     expect(() => assertProductionSecrets()).not.toThrow();
@@ -292,6 +299,58 @@ describe('assertProductionSecrets()', () => {
     const { assertProductionSecrets } = await loadSecurity();
     expect(() => assertProductionSecrets()).toThrow(/missing required env var\(s\): TURNSTILE_SECRET_KEY/);
   });
+
+  it('throws in production-like environments when TURNSTILE_ALLOWED_HOSTNAMES is missing', async () => {
+    process.env.APP_ENV = 'production';
+    process.env.ADMIN_JWT_SECRET = 'jwt';
+    process.env.ALLOWED_ORIGINS = 'https://app.example.com';
+    process.env.TURNSTILE_SECRET_KEY = 'turnstile';
+    process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 'email-hook';
+    delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+    const { assertProductionSecrets } = await loadSecurity();
+    expect(() => assertProductionSecrets()).toThrow(/TURNSTILE_ALLOWED_HOSTNAMES/);
+  });
+
+  it('does not require TURNSTILE_ALLOWED_HOSTNAMES on Replit production', async () => {
+    process.env.APP_ENV = 'production';
+    process.env.REPLIT_DEV_DOMAIN = 'x.replit.dev';
+    process.env.ADMIN_JWT_SECRET = 'jwt';
+    process.env.ALLOWED_ORIGINS = 'https://app.example.com';
+    process.env.TURNSTILE_SECRET_KEY = 'turnstile';
+    process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 'email-hook';
+    delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+    const { assertProductionSecrets } = await loadSecurity();
+    expect(() => assertProductionSecrets()).not.toThrow();
+  });
+
+  it('throws on Render qvo-api (role api) when TURNSTILE_ALLOWED_HOSTNAMES is missing', async () => {
+    process.env.APP_ENV = 'production';
+    process.env.RENDER = 'true';
+    process.env.QVO_PROCESS_ROLE = 'api';
+    process.env.ADMIN_JWT_SECRET = 'jwt';
+    process.env.ALLOWED_ORIGINS = 'https://app.example.com';
+    process.env.TURNSTILE_SECRET_KEY = 'turnstile';
+    process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 'email-hook';
+    delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+    const { assertProductionSecrets } = await loadSecurity();
+    expect(() => assertProductionSecrets()).toThrow(/TURNSTILE_ALLOWED_HOSTNAMES/);
+  });
+
+  it.each(['voice', 'worker', 'cron'] as const)(
+    'does not require TURNSTILE_ALLOWED_HOSTNAMES on Render role %s',
+    async (role) => {
+      process.env.APP_ENV = 'production';
+      process.env.RENDER = 'true';
+      process.env.QVO_PROCESS_ROLE = role;
+      process.env.ADMIN_JWT_SECRET = 'jwt';
+      process.env.ALLOWED_ORIGINS = 'https://app.example.com';
+      process.env.TURNSTILE_SECRET_KEY = 'turnstile';
+      process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 'email-hook';
+      delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+      const { assertProductionSecrets } = await loadSecurity();
+      expect(() => assertProductionSecrets()).not.toThrow();
+    },
+  );
 
   it('throws in production when CONNECTOR_EMAIL_WEBHOOK_SECRET is missing', async () => {
     process.env.APP_ENV = 'production';

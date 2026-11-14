@@ -1,17 +1,7 @@
 import { createLogger } from '../core/logger';
+import { isRenderRuntime, isReplitRuntime } from '../runtime/processRole';
 
 const logger = createLogger('TURNSTILE');
-
-/**
- * Default hostnames Cloudflare may return for a token solved on a QVO
- * surface. Override with a comma-separated `TURNSTILE_ALLOWED_HOSTNAMES`
- * list (replaces this default when set).
- */
-export const DEFAULT_TURNSTILE_ALLOWED_HOSTNAMES = [
-  'qualityvoiceoperations.com',
-  'api.qualityvoiceoperations.com',
-  'voice.qualityvoiceoperations.com',
-] as const;
 
 export const TURNSTILE_ALLOWED_HOSTNAMES_ENV = 'TURNSTILE_ALLOWED_HOSTNAMES';
 
@@ -37,11 +27,14 @@ export type TurnstileVerifyFailure = {
 
 export type TurnstileVerifyResult = { ok: true } | TurnstileVerifyFailure;
 
+/** Same user-facing copy for a failed, mismatched, or unusable CAPTCHA. */
+export const TURNSTILE_CAPTCHA_FAILED_ERROR = 'CAPTCHA verification failed. Please try again.';
+
 const ERRORS: Record<TurnstileFailureReason, string> = {
   missing_token: 'CAPTCHA verification is required',
-  hostname_mismatch: 'CAPTCHA hostname is not allowed for this form',
-  action_mismatch: 'CAPTCHA action does not match this form',
-  verification_failed: 'CAPTCHA verification failed. Please try again.',
+  hostname_mismatch: TURNSTILE_CAPTCHA_FAILED_ERROR,
+  action_mismatch: TURNSTILE_CAPTCHA_FAILED_ERROR,
+  verification_failed: TURNSTILE_CAPTCHA_FAILED_ERROR,
 };
 
 type SiteverifyResponse = {
@@ -50,6 +43,8 @@ type SiteverifyResponse = {
   action?: string;
   'error-codes'?: string[];
 };
+
+let missingAllowListWarned = false;
 
 export function turnstileSecret(): string {
   return (process.env.TURNSTILE_SECRET_KEY || '').trim();
@@ -63,15 +58,17 @@ export function normalizeTurnstileHostname(hostname: string): string {
   return hostname.trim().toLowerCase().replace(/\.$/, '');
 }
 
+/**
+ * Parse `TURNSTILE_ALLOWED_HOSTNAMES`. Empty / unset means "do not enforce
+ * a hostname allow-list" on local and Replit. On Render, an empty list is
+ * treated as a missing control (fail closed). A set value is the full list.
+ */
 export function parseTurnstileAllowedHostnames(raw: string | undefined): string[] {
-  if (raw === undefined || raw.trim() === '') {
-    return [...DEFAULT_TURNSTILE_ALLOWED_HOSTNAMES];
-  }
-  const hosts = raw
+  if (raw === undefined || raw.trim() === '') return [];
+  return raw
     .split(/[,;]/)
     .map(normalizeTurnstileHostname)
     .filter(Boolean);
-  return hosts.length > 0 ? hosts : [...DEFAULT_TURNSTILE_ALLOWED_HOSTNAMES];
 }
 
 export function allowedTurnstileHostnames(): string[] {
@@ -97,6 +94,32 @@ export function turnstileClientIp(req: {
   return req.ip ?? req.socket?.remoteAddress ?? '';
 }
 
+/** Test-only: re-arm the one-time missing-allow-list warning. */
+export function resetTurnstileHostnameAllowListWarning(): void {
+  missingAllowListWarned = false;
+}
+
+function isProductionLikeEnv(): boolean {
+  const appEnv = (process.env.APP_ENV ?? '').trim().toLowerCase();
+  if (appEnv) return appEnv === 'production' || appEnv === 'staging';
+  const nodeEnv = (process.env.NODE_ENV ?? '').trim().toLowerCase();
+  return nodeEnv === 'production' || nodeEnv === 'staging';
+}
+
+/** Hostname allow-list is required on Render and other production-like hosts, not on Replit or local dev. */
+export function shouldEnforceTurnstileHostnameAllowList(): boolean {
+  if (isReplitRuntime()) return false;
+  return isRenderRuntime() || isProductionLikeEnv();
+}
+
+function warnIfHostnameAllowListUnset(): void {
+  if (missingAllowListWarned) return;
+  missingAllowListWarned = true;
+  logger.warn(
+    'TURNSTILE_ALLOWED_HOSTNAMES is unset — skipping hostname allow-list (local/dev). Set a comma-separated list in production so tokens issued for other sites are rejected.',
+  );
+}
+
 function fail(reason: TurnstileFailureReason): TurnstileVerifyFailure {
   return { ok: false, status: 400, reason, error: ERRORS[reason] };
 }
@@ -106,6 +129,7 @@ function reject(
   reason: TurnstileFailureReason,
   expectedAction: string,
   data?: SiteverifyResponse,
+  extra?: Record<string, unknown>,
 ): TurnstileVerifyFailure {
   logger.warn('Turnstile verification rejected', {
     reason,
@@ -113,14 +137,19 @@ function reject(
     hostname: data?.hostname,
     action: data?.action,
     errorCodes: data?.['error-codes'],
+    ...extra,
   });
   return fail(reason);
 }
 
 /**
  * Verifies a Cloudflare Turnstile token against siteverify, then checks
- * that the returned hostname is on the QVO allow-list and that `action`
- * matches the form that collected the token.
+ * that the returned `action` matches the form that collected the token.
+ * When `TURNSTILE_ALLOWED_HOSTNAMES` is set, also requires `hostname` to
+ * be on that comma-separated list. When it is unset on local/Replit,
+ * hostname is not checked and a one-time warning is logged. Production-like
+ * hosts (including Render) reject an unset list so a missing env var cannot
+ * accept tokens issued for other sites.
  *
  * When `TURNSTILE_SECRET_KEY` is unset, verification is skipped (local/dev
  * bypass). Production startup requires the secret, so this cannot ship
@@ -152,8 +181,24 @@ export async function verifyTurnstile(opts: {
     });
     const data = (await response.json()) as SiteverifyResponse;
     if (data.success !== true) return reject('verification_failed', opts.expectedAction, data);
-    if (!isAllowedTurnstileHostname(data.hostname)) return reject('hostname_mismatch', opts.expectedAction, data);
-    if ((data.action ?? '').trim() !== opts.expectedAction) return reject('action_mismatch', opts.expectedAction, data);
+
+    const allowed = allowedTurnstileHostnames();
+    if (allowed.length === 0) {
+      // Production-like and Render must not silently accept tokens from any
+      // hostname. Replit and local keep the unset bypass.
+      if (shouldEnforceTurnstileHostnameAllowList()) {
+        return reject('hostname_mismatch', opts.expectedAction, data, {
+          hostnameAllowListUnset: true,
+        });
+      }
+      warnIfHostnameAllowListUnset();
+    } else if (!isAllowedTurnstileHostname(data.hostname, allowed)) {
+      return reject('hostname_mismatch', opts.expectedAction, data);
+    }
+
+    if ((data.action ?? '').trim() !== opts.expectedAction) {
+      return reject('action_mismatch', opts.expectedAction, data);
+    }
     return { ok: true };
   } catch (err) {
     logger.error('Turnstile verification failed', {

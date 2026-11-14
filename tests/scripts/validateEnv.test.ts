@@ -41,6 +41,7 @@ const ALL_PROD_REQUIRED = [
   'SALES_NOTIFICATION_EMAIL',
   'VITE_BOOK_DEMO_SCHEDULER_URL',
   'TURNSTILE_SECRET_KEY',
+  'TURNSTILE_ALLOWED_HOSTNAMES',
   'ALLOWED_ORIGINS',
 ] as const;
 
@@ -84,6 +85,10 @@ function resetEnv(): void {
   delete process.env.TICKETING_SYSTEM_URL;
   delete process.env.TICKETING_API_KEY;
   delete process.env.AZUL_VISION_ONCALL_NUMBER;
+  delete process.env.REPLIT_DEV_DOMAIN;
+  delete process.env.REPL_ID;
+  delete process.env.RENDER;
+  delete process.env.QVO_PROCESS_ROLE;
 }
 
 function applyAllProductionVars(): void {
