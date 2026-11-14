@@ -32,7 +32,7 @@ No production secrets are used. The `qvo_app` password in
 |--------|----------------|
 | `npm run db:setup-ci-roles` | Create `anon` / `authenticated` / `service_role` / `qvo_app` on the database in `DATABASE_URL_PRIVILEGED` (falls back to `DATABASE_URL`). Superuser required. |
 | `npm run db:migrate` | Apply `migrations/*.sql` as the privileged role. |
-| `npm run db:verify-rls` | Cross-tenant SELECT + INSERT probes (`scripts/verify-rls.ts`). |
+| `npm run db:verify-rls` | Cross-tenant SELECT + INSERT probes (`scripts/verify-rls.ts`). Uses SSL only when `APP_ENV` is not `development`, same as `db:migrate`, so the GitHub Actions `postgres:16` service (TLS off) can connect. |
 | `npm run test:security:isolation` | `tenantIsolation`, `crossTenantEndpoints`, `adminEndpointGuard`. |
 | `npm run test:security:rls` | `qvoAppRlsRealDb` (needs `QVO_RLS_TEST_DATABASE_URL`) and the 117-remediation SQL-shape tests. |
 | `npm run test:security:db` | Isolation + RLS suites together (what CI runs). |
