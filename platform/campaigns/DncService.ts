@@ -129,7 +129,17 @@ export function detectOptOutInTranscript(transcript: string): boolean {
   return OPT_OUT_PHRASES.some((phrase) => tail.includes(phrase));
 }
 
-const SMS_OPT_OUT_KEYWORDS = ['stop', 'unsubscribe', 'cancel', 'quit', 'remove', 'opt out', 'opt-out', 'end'];
+const SMS_OPT_OUT_KEYWORDS = [
+  'stop',
+  'stopall', // CTIA exact keyword; inbound SMS uses this list as the source of truth
+  'unsubscribe',
+  'cancel',
+  'quit',
+  'remove',
+  'opt out',
+  'opt-out',
+  'end',
+];
 
 export function isSmsOptOut(body: string): boolean {
   const trimmed = body.trim().toLowerCase();
