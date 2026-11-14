@@ -14,9 +14,11 @@ import {
 } from '../../sms/SmsConversationService';
 import { isLikelySmsOptOut, isSmsHelp, isSmsOptIn, liftSmsOptOutDnc } from './consent';
 import { normalizeE164 } from './send';
-import { SMS_MAX_BODY_CHARS } from './templates';
 
 const logger = createLogger('SMS_INBOUND');
+
+/** Twilio inbound `Body` max (concatenated SMS). Outbound still uses `SMS_MAX_BODY_CHARS` (640). */
+export const SMS_MAX_INBOUND_BODY_CHARS = 1600;
 
 const MESSAGE_SID_RE = /^(SM|MM)[A-Za-z0-9]{1,62}$/;
 const MAX_MEDIA = 10;
@@ -142,7 +144,7 @@ const inboundFieldsSchema = z
     From: z.string().min(1),
     To: z.string().min(1),
     MessageSid: z.string().regex(MESSAGE_SID_RE),
-    Body: z.string().max(SMS_MAX_BODY_CHARS).optional(),
+    Body: z.string().max(SMS_MAX_INBOUND_BODY_CHARS).optional(),
     NumMedia: z.union([z.string(), z.number()]).optional(),
   })
   .passthrough();

@@ -4,6 +4,7 @@ import { createMemoryStore } from '../core';
 import { isLikelySmsOptOut, isSmsHelp, isSmsOptIn } from './consent';
 import {
   EMPTY_INBOUND_TWIML,
+  SMS_MAX_INBOUND_BODY_CHARS,
   handleInboundSms,
   parseInboundSmsPayload,
   type InboundConversation,
@@ -186,9 +187,18 @@ describe('parseInboundSmsPayload', () => {
     expect(parseInboundSmsPayload({ To: TO, MessageSid: SID, Body: 'hi' })).toBeNull();
     expect(parseInboundSmsPayload(payload({ From: '555-0142' }))).toBeNull();
     expect(parseInboundSmsPayload(payload({ MessageSid: 'CA123' }))).toBeNull();
-    expect(parseInboundSmsPayload(payload({ Body: 'x'.repeat(SMS_MAX_BODY_CHARS + 1) }))).toBeNull();
+    expect(parseInboundSmsPayload(payload({ Body: 'x'.repeat(SMS_MAX_INBOUND_BODY_CHARS + 1) }))).toBeNull();
     expect(parseInboundSmsPayload(payload({ NumMedia: '11' }))).toBeNull();
     expect(parseInboundSmsPayload(payload({ NumMedia: 'nope' }))).toBeNull();
+  });
+
+  it('accepts an inbound body longer than the outbound 640-char cap (Twilio allows 1600)', () => {
+    const body = 'x'.repeat(SMS_MAX_BODY_CHARS + 1);
+    const parsed = parseInboundSmsPayload(payload({ Body: body }));
+    expect(parsed?.body).toHaveLength(SMS_MAX_BODY_CHARS + 1);
+    expect(parseInboundSmsPayload(payload({ Body: 'y'.repeat(SMS_MAX_INBOUND_BODY_CHARS) }))?.body).toHaveLength(
+      SMS_MAX_INBOUND_BODY_CHARS,
+    );
   });
 
   it('accepts an MM MessageSid and records MMS URLs/types without fetching', () => {

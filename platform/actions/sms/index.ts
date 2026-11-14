@@ -34,6 +34,7 @@ export {
 } from './consent';
 export {
   EMPTY_INBOUND_TWIML,
+  SMS_MAX_INBOUND_BODY_CHARS,
   defaultSmsInboundDeps,
   handleInboundSms,
   inboundSmsTwiml,

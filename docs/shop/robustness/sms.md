@@ -8,7 +8,8 @@ return TwiML. Outbound sends stay on `sms.send` (`platform/actions/sms/send.ts`)
 
 - **Validation.** `From`/`To` must normalize to E.164 (`normalizeE164`).
   `MessageSid` must start with `SM` or `MM`. `Body` is capped at
-  `SMS_MAX_BODY_CHARS` (640). `NumMedia` is 0–10; `MediaUrlN` must be http(s).
+  `SMS_MAX_INBOUND_BODY_CHARS` (1600, Twilio's inbound max — not the outbound
+  640-char cap). `NumMedia` is 0–10; `MediaUrlN` must be http(s).
   Invalid payloads return empty TwiML (HTTP 200) and a warn log with no phone
   number, body, or other PHI. The process does not throw.
 - **Idempotency.** Twilio may deliver the same `MessageSid` more than once.
