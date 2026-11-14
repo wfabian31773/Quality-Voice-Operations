@@ -58,13 +58,31 @@ describe('action registry', () => {
   });
 
   it('registers the ticket actions with unique names', () => {
-    expect(ticketsActions.length).toBeGreaterThan(0);
+    expect(ticketsActions.map((def) => def.name)).toEqual([
+      'tickets.open.prepare',
+      'tickets.open.commit',
+      'tickets.add_note',
+      'tickets.update',
+      'tickets.merge',
+      'tickets.list',
+      'tickets.get',
+      'tickets.file_floor',
+    ]);
     expect(ACTION_REGISTRY).toEqual(expect.arrayContaining([...schedulingActions, ...smsActions, ...ticketsActions]));
     expect(ACTION_REGISTRY).toHaveLength(schedulingActions.length + smsActions.length + ticketsActions.length);
     expect(listActions()).toEqual(ACTION_REGISTRY);
     expect(getAction('tickets.open.commit')?.tool).toBe('tickets');
     const names = ACTION_REGISTRY.map((def) => def.name);
     expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('registers tickets.merge as a UI/MCP write, not an agent tool', () => {
+    const def = getAction('tickets.merge')!;
+    expect(def.tool).toBe('tickets');
+    expect(def.kind).toBe('write');
+    expect(def.permissions).toEqual({ roles: ['tenant_owner', 'operations_manager'], mcpScope: 'qvo:admin' });
+    expect(def.permissions.agent).toBeUndefined();
+    expect(def.agentDescription).toBeUndefined();
   });
 
   it('registers the scheduling reads as agent-allowed read actions', () => {

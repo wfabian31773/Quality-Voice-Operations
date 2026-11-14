@@ -52,6 +52,7 @@ const SCHEMA = `
     intake JSONB NOT NULL DEFAULT '{}',
     urgency TEXT NOT NULL DEFAULT 'normal',
     source_call_ref VARCHAR(128),
+    parent_ticket_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
