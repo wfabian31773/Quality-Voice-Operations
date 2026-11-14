@@ -1,10 +1,10 @@
-// Proves the Replit adapter resolves every path to the object main resolved it
-// to. The oracle below is a verbatim copy of the path logic at origin/main commit
-// 1ba8c2bd513f160960e79be903438c63adb40d1c
-// (server/replit_integrations/object_storage/objectStorage.ts, plus
-// getObjectLocation from server/admin-api/routes/voicePreview.ts). Only the
+// Proves the Replit adapter resolves every absolute path to the object main
+// resolved it to. The oracle below is a verbatim copy of the path logic at
+// origin/main commit 1ba8c2bd513f160960e79be903438c63adb40d1c
+// (server/replit_integrations/object_storage/objectStorage.ts). Only the
 // storage client, the uuid and the response are stand-ins. Don't update it to
-// match the adapter.
+// match the adapter. Relative keys are the one deliberate break: they
+// round-trip through put()'s join so S3, local, and Replit share one layout.
 import { PassThrough, Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InvalidObjectPathError } from './errors';
@@ -223,21 +223,6 @@ async function signObjectURL({
   return signedURL;
 }
 
-// voicePreview.ts on main. TTS_FORMAT was mp3.
-const TTS_FORMAT = 'mp3';
-function getObjectLocation(hash: string): { bucketName: string; objectName: string } | null {
-  const dir = process.env.PRIVATE_OBJECT_DIR;
-  if (!dir) return null;
-  const trimmed = dir.replace(/\/+$/, '');
-  const fullPath = `${trimmed}/voice-previews/${hash}.${TTS_FORMAT}`;
-  const path = fullPath.startsWith('/') ? fullPath.slice(1) : fullPath;
-  const parts = path.split('/');
-  if (parts.length < 2) return null;
-  return {
-    bucketName: parts[0],
-    objectName: parts.slice(1).join('/'),
-  };
-}
 // ---- end verbatim ----
 
 const DIRS: Array<string | undefined> = [
@@ -289,7 +274,7 @@ const PATHS = [
   storageKeys.recording('t1', 'CA1'),
   storageKeys.knowledgeDocument('t1', 'd1'),
   'bare',
-  // Voice-preview shapes without the flag: main's generic rules apply.
+  // Voice-preview relative keys round-trip through put()'s join.
   storageKeys.voicePreview('hash1'),
   `/${storageKeys.voicePreview('hash1')}`,
   `/objects/${storageKeys.voicePreview('hash1')}`,
@@ -388,18 +373,36 @@ describe.each(DIRS.map((dir) => ({ dir: dir ?? '(unset)', raw: dir })))(
 
     it.each(PATHS.map((path) => ({ path })))('reads and deletes $path as main did', async ({ path }) => {
       const { main, oracleCalls, svc, adapter, adapterCalls } = setup();
-      const streamed = await outcome(oracleCalls, () => main.streamPrivateObject(path));
+      const relative = path.length > 0 && !path.startsWith('/') && !/^https?:\/\//i.test(path);
+      // Relative keys round-trip through put()'s join (provider parity). Absolute
+      // paths still match main's stream/delete parse.
+      const streamed = relative
+        ? await outcome(adapterCalls, () => adapter.put(path, 'x'))
+        : await outcome(oracleCalls, () => main.streamPrivateObject(path));
       const located = { touched: streamed.touched, error: streamed.error };
-      const reads: Array<() => Promise<unknown>> = [
-        () => adapter.get(path),
-        () => adapter.exists(path),
-        () => adapter.getMetadata(path),
-        async () => (await adapter.createReadStream(path)).destroy(),
-        () => svc.streamPrivateObject(path, sink()),
-      ];
+      const reads: Array<() => Promise<unknown>> = relative
+        ? [
+            () => adapter.get(path),
+            () => adapter.exists(path),
+            () => adapter.getMetadata(path),
+            async () => (await adapter.createReadStream(path)).destroy(),
+          ]
+        : [
+            () => adapter.get(path),
+            () => adapter.exists(path),
+            () => adapter.getMetadata(path),
+            async () => (await adapter.createReadStream(path)).destroy(),
+            () => svc.streamPrivateObject(path, sink()),
+          ];
       for (const read of reads) {
         const actual = await outcome(adapterCalls, read);
         expect({ touched: actual.touched, error: actual.error }).toEqual(located);
+      }
+
+      if (relative) {
+        const deleted = await outcome(adapterCalls, () => adapter.delete(path));
+        expect({ touched: deleted.touched, error: deleted.error }).toEqual(located);
+        return;
       }
 
       const deleted = await outcome(oracleCalls, () => main.deletePrivateObject(path));
@@ -408,7 +411,7 @@ describe.each(DIRS.map((dir) => ({ dir: dir ?? '(unset)', raw: dir })))(
     });
 
     it.each(PATHS.map((path) => ({ path })))('resolves entity lookups of $path as main did', async ({ path }) => {
-      const { main, oracleCalls, svc, adapterCalls } = setup();
+      const { main, oracleCalls, svc, adapter, adapterCalls } = setup();
       const expected = await outcome(oracleCalls, async () => {
         await main.getObjectEntityFile(path);
       });
@@ -422,6 +425,17 @@ describe.each(DIRS.map((dir) => ({ dir: dir ?? '(unset)', raw: dir })))(
         (await handle.createReadStream() as Readable).destroy();
       });
       expect({ touched: viaHandle.touched, error: viaHandle.error }).toEqual(located);
+
+      const relative = path.length > 0 && !path.startsWith('/') && !/^https?:\/\//i.test(path);
+      if (relative) {
+        const written = await outcome(adapterCalls, () => adapter.put(path, 'x'));
+        const viaStream = await outcome(adapterCalls, () => svc.streamStoredObject(path, sink()));
+        expect({ touched: viaStream.touched, error: viaStream.error }).toEqual({
+          touched: written.touched,
+          error: written.error,
+        });
+        return;
+      }
 
       // Attachments and completion photos: main's branch on the /objects/ prefix.
       const stored = path.startsWith('/objects/')
@@ -460,29 +474,21 @@ describe.each(DIRS.map((dir) => ({ dir: dir ?? '(unset)', raw: dir })))(
       expect(await outcome([], async () => svc.normalizeObjectEntityPath(url))).toEqual(expected);
     });
 
-    it.each(['hash1', 'a'.repeat(64)])('caches flagged voice preview %s where main did', async (hash) => {
+    it.each(['hash1', 'a'.repeat(64)])('round-trips voice-preview key %s through put() join', async (hash) => {
       const { adapter, adapterCalls } = setup();
       const key = storageKeys.voicePreview(hash);
-      const flag = { voicePreview: true };
-      const location = getObjectLocation(hash);
+      const written = await outcome(adapterCalls, () => adapter.put(key, 'x'));
+      const located = { touched: written.touched, error: written.error };
       const operations: Array<() => Promise<unknown>> = [
-        () => adapter.exists(key, flag),
-        () => adapter.get(key, flag),
-        () => adapter.getMetadata(key, flag),
-        async () => (await adapter.createReadStream(key, flag)).destroy(),
-        () => adapter.put(key, 'x', flag),
-        () => adapter.delete(key, flag),
+        () => adapter.exists(key),
+        () => adapter.get(key),
+        () => adapter.getMetadata(key),
+        async () => (await adapter.createReadStream(key)).destroy(),
+        () => adapter.delete(key),
       ];
       for (const operation of operations) {
         const actual = await outcome(adapterCalls, operation);
-        if (location) {
-          expect(actual.touched).toEqual([JSON.stringify([location.bucketName, location.objectName])]);
-          expect(actual.error).toBeUndefined();
-        } else {
-          // main's getObjectLocation returned null here, so nothing was touched.
-          expect(actual.touched).toEqual([]);
-          expect(actual.error).toMatch(/PRIVATE_OBJECT_DIR not set/);
-        }
+        expect({ touched: actual.touched, error: actual.error }).toEqual(located);
       }
     });
   },
@@ -523,22 +529,12 @@ describe('pinned keys', () => {
   describe('voice-preview keys under /bucket/private//', () => {
     const key = 'voice-previews/hash.mp3';
 
-    it('collapses the dir only when flagged', async () => {
-      const { adapter, calls } = adapterFor('/bucket/private//');
-      expect(await adapter.put(key, 'x', { voicePreview: true })).toBe('/bucket/private/voice-previews/hash.mp3');
-      await adapter.get(key, { voicePreview: true });
-      expect(await adapter.delete(key, { voicePreview: true })).toBe(true);
-      expect(calls).toEqual(Array(3).fill(['bucket', 'private/voice-previews/hash.mp3']));
-    });
-
-    it('keeps the generic rules without the flag', async () => {
+    it('put/get/delete the same object without a Replit-only option', async () => {
       const { adapter, calls } = adapterFor('/bucket/private//');
       expect(await adapter.put(key, 'x')).toBe('/bucket/private//voice-previews/hash.mp3');
-      expect(calls).toEqual([['bucket', 'private//voice-previews/hash.mp3']]);
-      calls.length = 0;
       await adapter.get(key);
       expect(await adapter.delete(key)).toBe(true);
-      expect(calls).toEqual(Array(2).fill(['voice-previews', 'hash.mp3']));
+      expect(calls).toEqual(Array(3).fill(['bucket', 'private//voice-previews/hash.mp3']));
     });
   });
 });

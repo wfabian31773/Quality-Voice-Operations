@@ -25,6 +25,12 @@ adding S3 credentials to a Replit host does not move it off its bucket. To use
 S3 on a host that still has `PRIVATE_OBJECT_DIR`, set
 `OBJECT_STORAGE_PROVIDER=s3`.
 
+**Never set `PRIVATE_OBJECT_DIR` on Render.** Render has no Replit sidecar. If
+that name is copied onto `qvo-api` / `qvo-voice` / `qvo-worker` while
+`OBJECT_STORAGE_PROVIDER` is unset, auto-detect picks Replit and every storage
+write fails. `validate-env` warns (does not fail boot) when it sees the name
+with `RENDER=true`. Use `OBJECT_STORAGE_PROVIDER=s3` and the S3 names below.
+
 Any other `OBJECT_STORAGE_PROVIDER` value counts as **not configured**: routes
 return 503, the server logs the variable name once, and `validate-env` warns.
 Neither prints the value.
@@ -66,8 +72,8 @@ Use this in tests. Do not point production at local disk.
 
 | Name | Required for Replit | Purpose |
 |---|---|---|
-| `PRIVATE_OBJECT_DIR` | yes | Private object directory (`/<bucket>/...`) |
-| `PUBLIC_OBJECT_SEARCH_PATHS` | public reads only | Comma-separated public search paths |
+| `PRIVATE_OBJECT_DIR` | yes | Private object directory (`/<bucket>/...`). **Never set on Render.** |
+| `PUBLIC_OBJECT_SEARCH_PATHS` | public reads only | Comma-separated public search paths. Replit-only |
 
 ## Key layout
 

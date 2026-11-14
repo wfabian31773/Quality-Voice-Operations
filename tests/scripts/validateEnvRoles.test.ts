@@ -157,6 +157,20 @@ describe('Render guards', () => {
     expect(r.warnings).toContain('REPLIT_DEV_DOMAIN is set but ignored on Render (Replit-only)');
   });
 
+  it('warns (never fails) when PRIVATE_OBJECT_DIR is set on Render', async () => {
+    setEnv({
+      ...VOICE,
+      RENDER: 'true',
+      APP_URL: 'https://a',
+      VOICE_GATEWAY_BASE_URL: 'https://v',
+      PRIVATE_OBJECT_DIR: '/bucket/private',
+    });
+    const { validateEnvironment } = await load();
+    const r = validateEnvironment({ role: 'voice' });
+    expect(r.passed).toBe(true);
+    expect(r.warnings.some((w) => w.includes('PRIVATE_OBJECT_DIR must never be set on Render'))).toBe(true);
+  });
+
   it('warns (never fails) on Azul-only names', async () => {
     setEnv({
       ...VOICE,

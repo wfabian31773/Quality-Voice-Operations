@@ -85,7 +85,7 @@
 | `S3_BUCKET` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | unset | Required together when `OBJECT_STORAGE_PROVIDER=s3`. Never commit values. |
 | `S3_ENDPOINT` / `S3_REGION` / `S3_FORCE_PATH_STYLE` / `S3_PREFIX` | see object-storage.md | S3-compatible extras. Supabase Storage uses `https://<ref>.supabase.co/storage/v1/s3`. |
 | `OBJECT_STORAGE_LOCAL_DIR` | `os.tmpdir()/qvo-object-storage` | Local-disk root for tests. Do not use on Render. |
-| `PRIVATE_OBJECT_DIR` / `PUBLIC_OBJECT_SEARCH_PATHS` | unset | Replit sidecar only. |
+| `PRIVATE_OBJECT_DIR` / `PUBLIC_OBJECT_SEARCH_PATHS` | unset | Replit sidecar only. **Never set `PRIVATE_OBJECT_DIR` on Render** — it wins over S3 auto-detect. |
 
 ## 2. Pre-deployment Validation
 
