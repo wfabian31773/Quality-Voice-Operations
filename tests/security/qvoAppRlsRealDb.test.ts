@@ -18,6 +18,10 @@
 // The qvo_app URL defaults to the same host/db with user qvo_app (local
 // trust auth); override with QVO_RLS_TEST_APP_URL. Non-local hosts are
 // refused because the test alters roles, policies and table ownership.
+//
+// CI: .github/workflows/db-security.yml sets QVO_RLS_TEST_* against a
+// throwaway Postgres 16 and runs this file via `npm run test:security:db`.
+// See docs/testing/db-security.md.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Client } from 'pg';
 import { randomUUID } from 'node:crypto';
@@ -207,6 +211,9 @@ describe.skipIf(!PRIV_URL)('qvo_app RLS against real Postgres', () => {
     } finally {
       await admin.query(`ALTER TABLE api_keys FORCE ROW LEVEL SECURITY`);
       await admin.query(`ALTER TABLE api_keys OWNER TO ${owner}`);
+      // Taking ownership absorbs qvo_app's GRANT; put it back so later
+      // probes (and a re-run on the same DB) still run as the app role.
+      await admin.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON api_keys TO qvo_app`);
     }
   });
 

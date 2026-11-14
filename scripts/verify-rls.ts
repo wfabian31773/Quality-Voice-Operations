@@ -23,7 +23,19 @@ async function main() {
   const url = process.env.DATABASE_URL_PRIVILEGED || process.env.PLATFORM_DB_POOL_URL;
   if (!url) throw new Error('[VERIFY-RLS] DATABASE_URL_PRIVILEGED / PLATFORM_DB_POOL_URL is not set');
 
-  const pool = new Pool({ connectionString: url, max: 3, ssl: { rejectUnauthorized: false } });
+  // Same SSL rule as scripts/run-migrations.ts: throwaway / local Postgres
+  // (APP_ENV=development, including GitHub Actions' postgres:16 service) has
+  // TLS off. Forcing ssl here fails with "The server does not support SSL
+  // connections" and would skip the isolation probes. Production/staging
+  // still talk to Supabase with rejectUnauthorized: false.
+  const env = process.env.APP_ENV ?? 'development';
+  const sslConfig = env === 'development' ? false : { rejectUnauthorized: false };
+
+  const pool = new Pool({
+    connectionString: url,
+    max: 3,
+    ...(sslConfig ? { ssl: sslConfig } : {}),
+  });
   const client = await pool.connect();
   let passed = 0;
   let failed = 0;

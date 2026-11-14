@@ -99,6 +99,10 @@ cross-tenant data.
 
 ## 3. Tests
 
+These suites skip when no database URL is set. CI runs them on every PR
+against a throwaway Postgres (see [`docs/testing/db-security.md`](testing/db-security.md)):
+`npm run db:migrate`, `npm run db:verify-rls`, `npm run test:security:db`.
+
 - `tests/security/tenantIsolation.test.ts` – verifies RLS is enabled
   on tenant tables, that cross-tenant reads/writes via raw SQL are
   blocked by RLS, and that `requireTenantContext` rejects a body
@@ -108,6 +112,9 @@ cross-tenant data.
   silent pass-through), and that the new `/platform/*` admin
   endpoints used by `AdminAnalytics` and `AdminMarketplace` are
   registered behind both `requireAuth` and `requirePlatformAdmin`.
+- `tests/security/qvoAppRlsRealDb.test.ts` – daily isolation suite
+  (`runAllIsolationTests`) against real `qvo_app` on a local disposable
+  database (`QVO_RLS_TEST_DATABASE_URL`).
 - `tests/security/crossTenantEndpoints.test.ts` – end-to-end HTTP
   tests that boot the real express app, seed two tenants with one
   user and one of each resource (agent, call, phone number, ticket,

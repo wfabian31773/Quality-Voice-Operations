@@ -11,14 +11,23 @@ const dbUrl =
 const FAKE_TENANT_A = randomUUID();
 const FAKE_TENANT_B = randomUUID();
 
-let pool: ReturnType<typeof import('../../platform/db').getPlatformPool> | null = null;
+let restrictedPool: ReturnType<typeof import('../../platform/db').getPlatformPool> | null = null;
+let privilegedPool: ReturnType<typeof import('../../platform/db').getPrivilegedPool> | null = null;
 
 async function getPool() {
-  if (!pool) {
+  if (!restrictedPool) {
     const { getPlatformPool } = await import('../../platform/db');
-    pool = getPlatformPool();
+    restrictedPool = getPlatformPool();
   }
-  return pool;
+  return restrictedPool;
+}
+
+async function getAdminPool() {
+  if (!privilegedPool) {
+    const { getPrivilegedPool } = await import('../../platform/db');
+    privilegedPool = getPrivilegedPool();
+  }
+  return privilegedPool;
 }
 
 describe.skipIf(!dbUrl)('Tenant Isolation - RLS Enforcement', () => {
@@ -31,7 +40,7 @@ describe.skipIf(!dbUrl)('Tenant Isolation - RLS Enforcement', () => {
   describe('RLS policies are enabled', () => {
     for (const table of RLS_TABLES) {
       it(`should have RLS enabled on ${table}`, async () => {
-        const p = await getPool();
+        const p = await getAdminPool();
         const { rows } = await p.query(
           `SELECT relrowsecurity FROM pg_class WHERE relname = $1`,
           [table],
@@ -111,17 +120,23 @@ describe.skipIf(!dbUrl)('Tenant Isolation - RLS Enforcement', () => {
     const TEST_TENANT = randomUUID();
 
     it('should prevent UPDATE on audit_logs', async () => {
-      const p = await getPool();
+      // Trigger fires regardless of RLS; the privileged pool can SET
+      // row_security = off so the INSERT is not blocked by tenant policy.
+      const p = await getAdminPool();
       const client = await p.connect();
       try {
         await client.query('BEGIN');
         await client.query('SET LOCAL row_security = off');
+        await client.query(
+          `INSERT INTO tenants (id, name, slug, status) VALUES ($1, $2, $3, 'active')`,
+          [TEST_TENANT, 'immutability-check', `immut-${TEST_TENANT}`],
+        );
 
         const { rows } = await client.query(
           `INSERT INTO audit_logs (tenant_id, actor_user_id, action, resource_type)
-           VALUES ($1, $2, $3, $4)
+           VALUES ($1, NULL, $2, $3)
            RETURNING id`,
-          [TEST_TENANT, 'test-immutability-user', 'test.immutability_check', 'test'],
+          [TEST_TENANT, 'test.immutability_check', 'test'],
         );
         const insertedId = rows[0].id as string;
 
@@ -138,17 +153,21 @@ describe.skipIf(!dbUrl)('Tenant Isolation - RLS Enforcement', () => {
     });
 
     it('should prevent DELETE on audit_logs', async () => {
-      const p = await getPool();
+      const p = await getAdminPool();
       const client = await p.connect();
       try {
         await client.query('BEGIN');
         await client.query('SET LOCAL row_security = off');
+        await client.query(
+          `INSERT INTO tenants (id, name, slug, status) VALUES ($1, $2, $3, 'active')`,
+          [TEST_TENANT, 'immutability-check', `immut-${TEST_TENANT}`],
+        );
 
         const { rows } = await client.query(
           `INSERT INTO audit_logs (tenant_id, actor_user_id, action, resource_type)
-           VALUES ($1, $2, $3, $4)
+           VALUES ($1, NULL, $2, $3)
            RETURNING id`,
-          [TEST_TENANT, 'test-immutability-user', 'test.immutability_check', 'test'],
+          [TEST_TENANT, 'test.immutability_check', 'test'],
         );
         const insertedId = rows[0].id as string;
 
