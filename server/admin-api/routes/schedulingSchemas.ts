@@ -219,17 +219,32 @@ function asText(value: string | null | undefined): string {
   return value ?? '';
 }
 
+function canonicalizeJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeJson);
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(obj).sort()) {
+      sorted[key] = canonicalizeJson(obj[key]);
+    }
+    return sorted;
+  }
+  return value;
+}
+
+/** Stable JSON for idempotency: jsonb reorders keys, so we sort them. */
 function canonicalIntake(value: unknown): string {
   if (value == null || value === '') return '{}';
+  let parsed: unknown = value;
   if (typeof value === 'string') {
     try {
-      return JSON.stringify(JSON.parse(value) ?? {});
+      parsed = JSON.parse(value) ?? {};
     } catch {
       return JSON.stringify({ raw: value });
     }
   }
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(canonicalizeJson(parsed));
   } catch {
     return '{}';
   }

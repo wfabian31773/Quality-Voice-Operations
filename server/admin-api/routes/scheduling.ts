@@ -967,6 +967,7 @@ async function findLivePhoneHold(
   const conds = [
     'tenant_id = $1',
     "status = 'held'",
+    "booking_source IN ('ai_agent', 'phone')",
     'hold_expires_at > NOW()',
     'start_time < $3::timestamptz',
     'COALESCE(blocked_until, end_time) > $2::timestamptz',

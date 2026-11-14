@@ -194,6 +194,24 @@ describe('held-by-phone CONFLICT (spec §1.6 #10)', () => {
     });
     expect(res.body.error).toMatch(/Held by a phone call until 3:34 PM/);
     expect(res.body.message).toBe(res.body.error);
+    const holdSql = a.poolQueryMock.mock.calls.map(([sql]) => String(sql)).find((sql) => /hold_expires_at/.test(sql) && /status = 'held'/.test(sql));
+    expect(holdSql).toMatch(/booking_source IN \('ai_agent', 'phone'\)/);
+  });
+
+  it('a live UI/MCP hold is a generic slot conflict, not heldBy phone_call', async () => {
+    a.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (/SELECT id, title, start_time, end_time FROM bookings/.test(sql)) {
+        return { rows: [{ id: 'hold1', title: 'Hold', start_time: '2030-01-02T20:00:00.000Z', end_time: '2030-01-02T20:30:00.000Z' }] };
+      }
+      if (/hold_expires_at/.test(sql) && /status = 'held'/.test(sql)) return { rows: [] };
+      return { rows: [] };
+    });
+    const res = await request(app()).post('/scheduling/bookings').send({
+      title: 'Cut', start_time: '2030-01-02T20:00:00.000Z', end_time: '2030-01-02T20:30:00.000Z', provider_id: 'p1',
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.heldBy).toBeUndefined();
+    expect(res.body.error).toBe('Time slot conflict detected');
   });
 
   it('confirm into a live phone hold returns 409 and rolls back', async () => {
@@ -361,6 +379,21 @@ describe('schedulingSchemas', () => {
   it('fingerprints two equivalent create bodies the same way', () => {
     const aBody = parseCreateBookingBody({ title: 'Cut', start_time: '2030-01-02T09:00:00Z', end_time: '2030-01-02T09:30:00Z' });
     const bBody = parseCreateBookingBody({ title: 'Cut', start_time: '2030-01-02T09:00:00.000Z', end_time: '2030-01-02T09:30:00.000Z' });
+    expect(aBody.ok && bBody.ok).toBe(true);
+    if (aBody.ok && bBody.ok) {
+      expect(createBookingFingerprint(aBody.data)).toBe(createBookingFingerprint(bBody.data));
+    }
+  });
+
+  it('fingerprints intake_data with JSONB-stable key order', () => {
+    const aBody = parseCreateBookingBody({
+      title: 'Cut', start_time: '2030-01-02T09:00:00Z', end_time: '2030-01-02T09:30:00Z',
+      intake_data: { longKey: 1, a: 2 },
+    });
+    const bBody = parseCreateBookingBody({
+      title: 'Cut', start_time: '2030-01-02T09:00:00Z', end_time: '2030-01-02T09:30:00Z',
+      intake_data: { a: 2, longKey: 1 },
+    });
     expect(aBody.ok && bBody.ok).toBe(true);
     if (aBody.ok && bBody.ok) {
       expect(createBookingFingerprint(aBody.data)).toBe(createBookingFingerprint(bBody.data));
