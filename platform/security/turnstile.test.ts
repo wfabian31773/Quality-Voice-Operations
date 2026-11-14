@@ -34,11 +34,17 @@ describe('verifyTurnstile', () => {
   const originalSecret = process.env.TURNSTILE_SECRET_KEY;
   const originalHosts = process.env.TURNSTILE_ALLOWED_HOSTNAMES;
   const originalRender = process.env.RENDER;
+  const originalAppEnv = process.env.APP_ENV;
+  const originalReplitDomain = process.env.REPLIT_DEV_DOMAIN;
+  const originalReplId = process.env.REPL_ID;
 
   beforeEach(() => {
     process.env.TURNSTILE_SECRET_KEY = 'test-turnstile-secret';
+    process.env.APP_ENV = 'development';
     delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
     delete process.env.RENDER;
+    delete process.env.REPLIT_DEV_DOMAIN;
+    delete process.env.REPL_ID;
     resetTurnstileHostnameAllowListWarning();
     log.warn.mockReset();
     log.error.mockReset();
@@ -52,6 +58,12 @@ describe('verifyTurnstile', () => {
     else process.env.TURNSTILE_ALLOWED_HOSTNAMES = originalHosts;
     if (originalRender === undefined) delete process.env.RENDER;
     else process.env.RENDER = originalRender;
+    if (originalAppEnv === undefined) delete process.env.APP_ENV;
+    else process.env.APP_ENV = originalAppEnv;
+    if (originalReplitDomain === undefined) delete process.env.REPLIT_DEV_DOMAIN;
+    else process.env.REPLIT_DEV_DOMAIN = originalReplitDomain;
+    if (originalReplId === undefined) delete process.env.REPL_ID;
+    else process.env.REPL_ID = originalReplId;
   });
 
   function mockSiteverify(body: Record<string, unknown>): void {
@@ -144,6 +156,40 @@ describe('verifyTurnstile', () => {
       String(message).includes('TURNSTILE_ALLOWED_HOSTNAMES is unset'),
     );
     expect(allowListWarnings).toHaveLength(1);
+  });
+
+  it('rejects any hostname in production-like environments when TURNSTILE_ALLOWED_HOSTNAMES is unset', async () => {
+    process.env.APP_ENV = 'production';
+    mockSiteverify({
+      success: true,
+      hostname: 'qualityvoiceoperations.com',
+      action: TURNSTILE_ACTIONS.signup,
+    });
+
+    const result = await verifyTurnstile(okOpts);
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      reason: 'hostname_mismatch',
+      error: TURNSTILE_CAPTCHA_FAILED_ERROR,
+    });
+    expect(log.warn).toHaveBeenCalledWith('Turnstile verification rejected', expect.objectContaining({
+      reason: 'hostname_mismatch',
+      hostnameAllowListUnset: true,
+    }));
+  });
+
+  it('accepts any hostname on Replit production when TURNSTILE_ALLOWED_HOSTNAMES is unset', async () => {
+    process.env.APP_ENV = 'production';
+    process.env.REPLIT_DEV_DOMAIN = 'x.replit.dev';
+    mockSiteverify({
+      success: true,
+      hostname: 'x.replit.dev',
+      action: TURNSTILE_ACTIONS.signup,
+    });
+
+    await expect(verifyTurnstile(okOpts)).resolves.toEqual({ ok: true });
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('TURNSTILE_ALLOWED_HOSTNAMES is unset'));
   });
 
   it('rejects any hostname on Render when TURNSTILE_ALLOWED_HOSTNAMES is unset', async () => {

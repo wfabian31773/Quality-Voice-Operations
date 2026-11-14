@@ -48,6 +48,7 @@ const API = {
   VOICE_GATEWAY_BASE_URL: 'https://voice.example.com', VOICE_GATEWAY_STREAM_TOKEN: `${SECRET}-stream-token`,
   ADMIN_API_BASE_URL: 'https://api.example.com', CALCOM_WEBHOOK_SECRET: SECRET, SALES_NOTIFICATION_EMAIL: 's@example.com',
   VITE_BOOK_DEMO_SCHEDULER_URL: 'https://cal.com/x', TURNSTILE_SECRET_KEY: SECRET, ALLOWED_ORIGINS: 'https://api.example.com',
+  TURNSTILE_ALLOWED_HOSTNAMES: 'api.example.com',
 };
 
 let logSpy: ReturnType<typeof vi.spyOn>;
@@ -151,6 +152,19 @@ describe('Render guards', () => {
     const r = validateEnvironment({ role: 'api' });
     expect(r.passed).toBe(false);
     expect(r.missing).toContain('TURNSTILE_ALLOWED_HOSTNAMES');
+  });
+
+  it('production role all requires TURNSTILE_ALLOWED_HOSTNAMES unless Replit', async () => {
+    setEnv({ ...API });
+    delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+    const { validateEnvironment } = await load();
+    expect(validateEnvironment({ role: 'all' }).missing).toContain('TURNSTILE_ALLOWED_HOSTNAMES');
+
+    setEnv({ ...API, REPLIT_DEV_DOMAIN: 'x.replit.dev' });
+    delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+    const replit = validateEnvironment({ role: 'all' });
+    expect(replit.missing).not.toContain('TURNSTILE_ALLOWED_HOSTNAMES');
+    expect(replit.passed).toBe(true);
   });
 
   it.each([

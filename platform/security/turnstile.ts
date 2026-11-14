@@ -1,5 +1,5 @@
 import { createLogger } from '../core/logger';
-import { isRenderRuntime } from '../runtime/processRole';
+import { isRenderRuntime, isReplitRuntime } from '../runtime/processRole';
 
 const logger = createLogger('TURNSTILE');
 
@@ -99,6 +99,19 @@ export function resetTurnstileHostnameAllowListWarning(): void {
   missingAllowListWarned = false;
 }
 
+function isProductionLikeEnv(): boolean {
+  const appEnv = (process.env.APP_ENV ?? '').trim().toLowerCase();
+  if (appEnv) return appEnv === 'production' || appEnv === 'staging';
+  const nodeEnv = (process.env.NODE_ENV ?? '').trim().toLowerCase();
+  return nodeEnv === 'production' || nodeEnv === 'staging';
+}
+
+/** Hostname allow-list is required on Render and other production-like hosts, not on Replit or local dev. */
+export function shouldEnforceTurnstileHostnameAllowList(): boolean {
+  if (isReplitRuntime()) return false;
+  return isRenderRuntime() || isProductionLikeEnv();
+}
+
 function warnIfHostnameAllowListUnset(): void {
   if (missingAllowListWarned) return;
   missingAllowListWarned = true;
@@ -134,9 +147,9 @@ function reject(
  * that the returned `action` matches the form that collected the token.
  * When `TURNSTILE_ALLOWED_HOSTNAMES` is set, also requires `hostname` to
  * be on that comma-separated list. When it is unset on local/Replit,
- * hostname is not checked and a one-time warning is logged. On Render an
- * unset list is rejected (fail closed) so a missing env var cannot accept
- * tokens issued for other sites.
+ * hostname is not checked and a one-time warning is logged. Production-like
+ * hosts (including Render) reject an unset list so a missing env var cannot
+ * accept tokens issued for other sites.
  *
  * When `TURNSTILE_SECRET_KEY` is unset, verification is skipped (local/dev
  * bypass). Production startup requires the secret, so this cannot ship
@@ -171,9 +184,9 @@ export async function verifyTurnstile(opts: {
 
     const allowed = allowedTurnstileHostnames();
     if (allowed.length === 0) {
-      // Render already has this env on qvo-api. Skipping the check there
-      // would silently accept tokens from any hostname.
-      if (isRenderRuntime()) {
+      // Production-like and Render must not silently accept tokens from any
+      // hostname. Replit and local keep the unset bypass.
+      if (shouldEnforceTurnstileHostnameAllowList()) {
         return reject('hostname_mismatch', opts.expectedAction, data, {
           hostnameAllowListUnset: true,
         });

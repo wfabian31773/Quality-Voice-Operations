@@ -6,7 +6,7 @@ import {
 
 const ENV_KEYS = [
   'APP_ENV', 'NODE_ENV', 'ALLOWED_ORIGINS', 'ADMIN_JWT_SECRET', 'TURNSTILE_SECRET_KEY',
-  'TURNSTILE_ALLOWED_HOSTNAMES', 'RENDER', 'QVO_PROCESS_ROLE',
+  'TURNSTILE_ALLOWED_HOSTNAMES', 'RENDER', 'QVO_PROCESS_ROLE', 'REPLIT_DEV_DOMAIN', 'REPL_ID',
   'CONNECTOR_EMAIL_WEBHOOK_SECRET', 'CONNECTOR_ENCRYPTION_KEY',
   'BOOK_DEMO_SCHEDULER_PROVIDER', 'VITE_BOOK_DEMO_SCHEDULER_PROVIDER', 'CALENDLY_WEBHOOK_SECRET',
 ];
@@ -122,6 +122,7 @@ describe('assertProductionSecrets', () => {
     process.env.ADMIN_JWT_SECRET = 's';
     process.env.ALLOWED_ORIGINS = 'https://a.com';
     process.env.TURNSTILE_SECRET_KEY = 's';
+    process.env.TURNSTILE_ALLOWED_HOSTNAMES = 'api.example.com';
     process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 's';
     expect(() => assertProductionSecrets()).not.toThrow();
   });
@@ -134,6 +135,7 @@ describe('assertProductionSecrets', () => {
     process.env.BOOK_DEMO_SCHEDULER_PROVIDER = 'calendly';
     expect(() => assertProductionSecrets()).toThrow(/CALENDLY_WEBHOOK_SECRET/);
     process.env.CALENDLY_WEBHOOK_SECRET = 's';
+    process.env.TURNSTILE_ALLOWED_HOSTNAMES = 'api.example.com';
     expect(() => assertProductionSecrets()).not.toThrow();
   });
   it('treats a whitespace-only required secret as missing', () => {
@@ -152,13 +154,22 @@ describe('assertProductionSecrets', () => {
     process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 's';
     expect(() => assertProductionSecrets()).toThrow(/Cloudflare test\/dummy secret/);
   });
-  it('does not require TURNSTILE_ALLOWED_HOSTNAMES off Render (Replit/local bypass)', () => {
+  it('does not require TURNSTILE_ALLOWED_HOSTNAMES on Replit production', () => {
     process.env.APP_ENV = 'production';
+    process.env.REPLIT_DEV_DOMAIN = 'x.replit.dev';
     process.env.ADMIN_JWT_SECRET = 's';
     process.env.ALLOWED_ORIGINS = 'https://a.com';
     process.env.TURNSTILE_SECRET_KEY = 's';
     process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 's';
     expect(() => assertProductionSecrets()).not.toThrow();
+  });
+  it('requires TURNSTILE_ALLOWED_HOSTNAMES in production-like environments that are not Replit', () => {
+    process.env.APP_ENV = 'production';
+    process.env.ADMIN_JWT_SECRET = 's';
+    process.env.ALLOWED_ORIGINS = 'https://a.com';
+    process.env.TURNSTILE_SECRET_KEY = 's';
+    process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 's';
+    expect(() => assertProductionSecrets()).toThrow(/TURNSTILE_ALLOWED_HOSTNAMES/);
   });
   it('requires TURNSTILE_ALLOWED_HOSTNAMES on Render qvo-api (role api)', () => {
     process.env.APP_ENV = 'production';
