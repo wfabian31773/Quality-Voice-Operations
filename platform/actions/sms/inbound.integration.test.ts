@@ -6,6 +6,8 @@ import { isSmsOptOut } from '../../campaigns/DncService';
 import { isLikelySmsOptOut, isSmsHelp, isSmsOptIn } from './consent';
 import {
   handleInboundSms,
+  LIKELY_OPT_OUT_ACTIVITY_ACTION,
+  LIKELY_OPT_OUT_REASON,
   postgresSmsInboundStore,
   type SmsInboundDeps,
 } from './inbound';
@@ -131,6 +133,13 @@ describe.skipIf(!dbUp)('handleInboundSms (local Postgres)', () => {
         details JSONB DEFAULT '{}',
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       )`);
+      // Same allow-list as migration 053 — a new action string must not pass this suite.
+      await admin.query(`ALTER TABLE sms_conversation_activity_log ADD CONSTRAINT sms_activity_action_check
+        CHECK (action IN ('status_changed', 'assigned', 'note_added', 'message_sent', 'message_received', 'message_scheduled', 'priority_changed', 'pinned', 'unpinned', 'tagged', 'follow_up_set'))`);
+      await admin.query(`ALTER TABLE sms_consent_log ADD CONSTRAINT sms_consent_action_check
+        CHECK (action IN ('opt_in', 'opt_out', 'help_request'))`);
+      await admin.query(`ALTER TABLE sms_messages ADD CONSTRAINT sms_msg_direction_check
+        CHECK (direction IN ('inbound', 'outbound'))`);
     } finally {
       admin.release();
     }
@@ -270,14 +279,28 @@ describe.skipIf(!dbUp)('handleInboundSms (local Postgres)', () => {
     });
   });
 
-  it('records likely_opt_out on the conversation activity log for a non-exact phrase', async () => {
-    await handleInboundSms(
+  it('records likely_opt_out as note_added metadata for a non-exact phrase (sms_activity_action_check)', async () => {
+    const result = await handleInboundSms(
       { From: FROM, To: TO_A, MessageSid: sid('likely'), Body: 'please stop' },
       depsFor(TENANT_A, PN_A, TO_A),
     );
+    expect(result.httpStatus).toBe(200);
     expect(await count('dnc_list', 'tenant_id = $1', [TENANT_A])).toBe(0);
-    expect(
-      await count('sms_conversation_activity_log', "tenant_id = $1 AND action = 'likely_opt_out'", [TENANT_A]),
-    ).toBe(1);
+    const { rows } = await holder.pool!.query(
+      `SELECT action, details FROM sms_conversation_activity_log
+        WHERE tenant_id = $1 AND action = $2 AND details->>'reason' = $3`,
+      [TENANT_A, LIKELY_OPT_OUT_ACTIVITY_ACTION, LIKELY_OPT_OUT_REASON],
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it('rejects a dedicated likely_opt_out activity action under sms_activity_action_check', async () => {
+    await expect(
+      holder.pool!.query(
+        `INSERT INTO sms_conversation_activity_log (id, tenant_id, conversation_id, action, details)
+         VALUES ('act-1', $1, 'conv-missing', 'likely_opt_out', '{}')`,
+        [TENANT_A],
+      ),
+    ).rejects.toThrow(/sms_activity_action_check/);
   });
 });

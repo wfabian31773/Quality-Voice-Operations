@@ -35,8 +35,10 @@ return TwiML. Outbound sends stay on `sms.send` (`platform/actions/sms/send.ts`)
   `sms_messages.metadata`. Media is never fetched.
 - **Likely opt-out.** A non-exact phrase such as "stop texting me so much" or
   "please stop" does **not** opt the number out. It writes an activity-log row
-  `action = 'likely_opt_out'` so the owner can see it. The phrase list is
-  small and conservative (`isLikelySmsOptOut`).
+  `action = 'note_added'` with `details.reason = 'likely_opt_out'` (an action
+  already allowed by `sms_activity_action_check` in migration 053 — a dedicated
+  `likely_opt_out` action needs a later migration). The phrase list is small
+  and conservative (`isLikelySmsOptOut`).
 - **Signature.** Invalid Twilio signatures never reach this handler.
   `twilioSignatureMiddleware` on `/twilio/sms` returns 403.
 
@@ -60,7 +62,7 @@ returned so the customer can receive the reply via Twilio.
 |---|---|---|
 | 1 | Caller texted STOP last month, now booking by phone: chokepoint suppresses | `handleInboundSms` › `§2.6 #1 opted-out caller later books…` and `sms.send` › `returns RECIPIENT_OPTED_OUT and never calls Twilio for an opted-out recipient` (`send.test.ts`) |
 | 2 | STOP then START: latest consent wins, DNC lifted | `handleInboundSms` › `§2.6 #2 STOP then START…`; `handleInboundSms (local Postgres)` › `STOP then START: latest consent is opt_in…` |
-| 3 | "Stop texting me so much" / "please stop": not an opt-out; likely_opt_out flag | `handleInboundSms` › `§2.6 #3 flags a non-exact opt-out phrase…`; Postgres › `records likely_opt_out on the conversation activity log…` |
+| 3 | "Stop texting me so much" / "please stop": not an opt-out; likely_opt_out flag | `handleInboundSms` › `§2.6 #3 flags a non-exact opt-out phrase…`; Postgres › `records likely_opt_out as note_added metadata…` (schema includes `sms_activity_action_check`) |
 | 10 | Inbound MMS photo | `handleInboundSms` › `§2.6 #10 records NumMedia…`; Postgres › `stores MMS NumMedia and media metadata…` |
 | 11 | Spoofed webhook, no valid Twilio signature → 403 | `POST /twilio/sms` mounts `twilioSignatureMiddleware`; 403 cases in `tests/security/twilioSignatureMiddleware.test.ts` (`rejects with 403 when X-Twilio-Signature header is missing`, tampered signature, replay on `/twilio/sms`) |
 
@@ -83,3 +85,6 @@ invalid payload; persist failure → 500 and no auto-reply.
   list stays conservative; tightening to whole-message match is a follow-up.
 - Confirmation keywords C/X (§2.3 #5) are not wired to bookings.
 - Outbound MMS is out of scope (tools-spec: wk 2).
+- Dedicated activity action `likely_opt_out` (plus a migration widening
+  `sms_activity_action_check`). Today the flag is `note_added` +
+  `details.reason = 'likely_opt_out'` so STOP-like phrases do not 500.

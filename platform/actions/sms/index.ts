@@ -34,6 +34,8 @@ export {
 } from './consent';
 export {
   EMPTY_INBOUND_TWIML,
+  LIKELY_OPT_OUT_ACTIVITY_ACTION,
+  LIKELY_OPT_OUT_REASON,
   SMS_MAX_INBOUND_BODY_CHARS,
   defaultSmsInboundDeps,
   handleInboundSms,

@@ -4,6 +4,8 @@ import { createMemoryStore } from '../core';
 import { isLikelySmsOptOut, isSmsHelp, isSmsOptIn } from './consent';
 import {
   EMPTY_INBOUND_TWIML,
+  LIKELY_OPT_OUT_ACTIVITY_ACTION,
+  LIKELY_OPT_OUT_REASON,
   SMS_MAX_INBOUND_BODY_CHARS,
   handleInboundSms,
   parseInboundSmsPayload,
@@ -126,8 +128,8 @@ function createMemoryStoreBackend(state: MemoryState): SmsInboundStore {
           state.activities.push({
             tenantId: input.tenantId,
             conversationId: conversation.id,
-            action: 'likely_opt_out',
-            details: { likely_opt_out: true },
+            action: LIKELY_OPT_OUT_ACTIVITY_ACTION,
+            details: { reason: LIKELY_OPT_OUT_REASON },
           });
         }
         return { duplicate: false, conversation };
@@ -333,7 +335,11 @@ describe('handleInboundSms', () => {
     await handleInboundSms(payload({ Body: 'stop texting me so much' }), deps);
     expect(state.consents).toHaveLength(0);
     expect(state.dnc.size).toBe(0);
-    expect(state.activities.some((a) => a.action === 'likely_opt_out')).toBe(true);
+    expect(
+      state.activities.some(
+        (a) => a.action === LIKELY_OPT_OUT_ACTIVITY_ACTION && a.details.reason === LIKELY_OPT_OUT_REASON,
+      ),
+    ).toBe(true);
     expect(state.messages).toHaveLength(1);
   });
 

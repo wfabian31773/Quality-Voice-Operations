@@ -26,6 +26,13 @@ const MAX_MEDIA_URL_CHARS = 2048;
 const MAX_MEDIA_TYPE_CHARS = 128;
 const INBOUND_LOCK_PREFIX = 'sms-inbound:';
 
+/**
+ * `sms_activity_action_check` (migration 053) has no `likely_opt_out` value.
+ * Record the flag as a `note_added` row until a dedicated action is migrated.
+ */
+export const LIKELY_OPT_OUT_ACTIVITY_ACTION = 'note_added';
+export const LIKELY_OPT_OUT_REASON = 'likely_opt_out';
+
 export const EMPTY_INBOUND_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
 
 export function inboundSmsTwiml(inner = ''): string {
@@ -350,8 +357,14 @@ async function persistInboundOnClient(
     await client.query(
       `INSERT INTO sms_conversation_activity_log
          (id, tenant_id, conversation_id, action, actor_user_id, actor_name, details)
-       VALUES ($1, $2, $3, 'likely_opt_out', NULL, NULL, $4::jsonb)`,
-      [newId(), tenantId, conversation.id, JSON.stringify({ likely_opt_out: true })],
+       VALUES ($1, $2, $3, $4, NULL, NULL, $5::jsonb)`,
+      [
+        newId(),
+        tenantId,
+        conversation.id,
+        LIKELY_OPT_OUT_ACTIVITY_ACTION,
+        JSON.stringify({ reason: LIKELY_OPT_OUT_REASON }),
+      ],
     );
   }
 
