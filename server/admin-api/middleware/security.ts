@@ -19,7 +19,7 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import type { CookieOptions } from 'express';
 import type { CorsOptions } from 'cors';
-import { isRenderRuntime } from '../../../platform/runtime/processRole';
+import { isRenderRuntime, resolveProcessRole } from '../../../platform/runtime/processRole';
 
 const PRODUCTION_LIKE_ENVS = new Set(['production', 'staging']);
 
@@ -251,11 +251,17 @@ export function assertProductionSecrets(): void {
     );
   }
 
-  // Render qvo-api already has this list. Replit/local keep the unset bypass
-  // (one-time warning in verifyTurnstile) so signup still works there.
-  if (isRenderRuntime() && !(process.env.TURNSTILE_ALLOWED_HOSTNAMES ?? '').trim()) {
+  // Render qvo-api already has this list (per-service, not in qvo-secrets).
+  // Voice/worker/nightly share this module but must boot without the name.
+  // Replit/local keep the unset bypass (one-time warning in verifyTurnstile).
+  const processRole = resolveProcessRole();
+  if (
+    isRenderRuntime()
+    && (processRole === 'api' || processRole === 'all')
+    && !(process.env.TURNSTILE_ALLOWED_HOSTNAMES ?? '').trim()
+  ) {
     errors.push(
-      'TURNSTILE_ALLOWED_HOSTNAMES is required on Render so signup CAPTCHA tokens from other sites are rejected',
+      'TURNSTILE_ALLOWED_HOSTNAMES is required on Render qvo-api so signup CAPTCHA tokens from other sites are rejected',
     );
   }
 

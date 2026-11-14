@@ -19,6 +19,7 @@ function resetEnv(): void {
   delete process.env.TURNSTILE_SECRET_KEY;
   delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
   delete process.env.RENDER;
+  delete process.env.QVO_PROCESS_ROLE;
   delete process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET;
   delete process.env.APP_ENV;
   delete process.env.NODE_ENV;
@@ -295,9 +296,10 @@ describe('assertProductionSecrets()', () => {
     expect(() => assertProductionSecrets()).toThrow(/missing required env var\(s\): TURNSTILE_SECRET_KEY/);
   });
 
-  it('throws on Render when TURNSTILE_ALLOWED_HOSTNAMES is missing', async () => {
+  it('throws on Render qvo-api (role api) when TURNSTILE_ALLOWED_HOSTNAMES is missing', async () => {
     process.env.APP_ENV = 'production';
     process.env.RENDER = 'true';
+    process.env.QVO_PROCESS_ROLE = 'api';
     process.env.ADMIN_JWT_SECRET = 'jwt';
     process.env.ALLOWED_ORIGINS = 'https://app.example.com';
     process.env.TURNSTILE_SECRET_KEY = 'turnstile';
@@ -306,6 +308,22 @@ describe('assertProductionSecrets()', () => {
     const { assertProductionSecrets } = await loadSecurity();
     expect(() => assertProductionSecrets()).toThrow(/TURNSTILE_ALLOWED_HOSTNAMES/);
   });
+
+  it.each(['voice', 'worker', 'cron'] as const)(
+    'does not require TURNSTILE_ALLOWED_HOSTNAMES on Render role %s',
+    async (role) => {
+      process.env.APP_ENV = 'production';
+      process.env.RENDER = 'true';
+      process.env.QVO_PROCESS_ROLE = role;
+      process.env.ADMIN_JWT_SECRET = 'jwt';
+      process.env.ALLOWED_ORIGINS = 'https://app.example.com';
+      process.env.TURNSTILE_SECRET_KEY = 'turnstile';
+      process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 'email-hook';
+      delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+      const { assertProductionSecrets } = await loadSecurity();
+      expect(() => assertProductionSecrets()).not.toThrow();
+    },
+  );
 
   it('throws in production when CONNECTOR_EMAIL_WEBHOOK_SECRET is missing', async () => {
     process.env.APP_ENV = 'production';

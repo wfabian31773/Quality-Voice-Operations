@@ -1,5 +1,7 @@
 // PR-00 (Render): role-based env validation in scripts/validate-env.ts.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const ORIGINAL_ENV = { ...process.env };
 const SECRET = 'SENTINEL-SECRET-VALUE-0123456789abcdef';
@@ -142,7 +144,7 @@ describe('Render guards', () => {
     expect(output()).toContain('FAIL  APP_URL — required on Render (no REPLIT_DEV_DOMAIN fallback)');
   });
 
-  it('RENDER=true requires TURNSTILE_ALLOWED_HOSTNAMES on the api role', async () => {
+  it('RENDER=true requires TURNSTILE_ALLOWED_HOSTNAMES on the api role only (qvo-api)', async () => {
     setEnv({ ...API, RENDER: 'true', APP_URL: 'https://api.example.com', VOICE_GATEWAY_BASE_URL: 'https://voice.example.com' });
     delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
     const { validateEnvironment } = await load();
@@ -151,13 +153,31 @@ describe('Render guards', () => {
     expect(r.missing).toContain('TURNSTILE_ALLOWED_HOSTNAMES');
   });
 
-  it('RENDER=true does not require TURNSTILE_ALLOWED_HOSTNAMES on voice', async () => {
-    setEnv({ ...VOICE, RENDER: 'true', APP_URL: 'https://api.example.com', VOICE_GATEWAY_BASE_URL: 'https://voice.example.com' });
-    const { validateEnvironment } = await load();
-    const r = validateEnvironment({ role: 'voice' });
-    expect(r.missing).not.toContain('TURNSTILE_ALLOWED_HOSTNAMES');
-    expect(r.passed).toBe(true);
-  });
+  it.each([
+    ['voice', VOICE, 'server/voice-gateway/start.ts'],
+    ['worker', WORKER, 'server/worker/start.ts'],
+    ['cron', CRON, 'server/jobs/run.ts'],
+  ] as const)(
+    'RENDER=true does not require TURNSTILE_ALLOWED_HOSTNAMES for %s (%s)',
+    async (role, vars, entrypoint) => {
+      setEnv({
+        ...vars,
+        RENDER: 'true',
+        APP_URL: 'https://api.example.com',
+        VOICE_GATEWAY_BASE_URL: 'https://voice.example.com',
+      });
+      delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+      const { validateEnvironment } = await load();
+      const r = validateEnvironment({ role });
+      expect(r.missing).not.toContain('TURNSTILE_ALLOWED_HOSTNAMES');
+      expect(r.passed).toBe(true);
+
+      const src = readFileSync(resolve(entrypoint), 'utf8');
+      expect(src).toContain('validateEnvironment({');
+      expect(src).toMatch(/role[:\s]/);
+      expect(src).not.toContain('assertProductionSecrets');
+    },
+  );
 
   it('RENDER=true requires VOICE_GATEWAY_BASE_URL even in development', async () => {
     setEnv({ RENDER: 'true', APP_ENV: 'development', APP_URL: 'https://api.example.com', DATABASE_URL: 'postgres://x' });

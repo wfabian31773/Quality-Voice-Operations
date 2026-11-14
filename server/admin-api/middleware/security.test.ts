@@ -6,7 +6,7 @@ import {
 
 const ENV_KEYS = [
   'APP_ENV', 'NODE_ENV', 'ALLOWED_ORIGINS', 'ADMIN_JWT_SECRET', 'TURNSTILE_SECRET_KEY',
-  'TURNSTILE_ALLOWED_HOSTNAMES', 'RENDER',
+  'TURNSTILE_ALLOWED_HOSTNAMES', 'RENDER', 'QVO_PROCESS_ROLE',
   'CONNECTOR_EMAIL_WEBHOOK_SECRET', 'CONNECTOR_ENCRYPTION_KEY',
   'BOOK_DEMO_SCHEDULER_PROVIDER', 'VITE_BOOK_DEMO_SCHEDULER_PROVIDER', 'CALENDLY_WEBHOOK_SECRET',
 ];
@@ -160,9 +160,10 @@ describe('assertProductionSecrets', () => {
     process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 's';
     expect(() => assertProductionSecrets()).not.toThrow();
   });
-  it('requires TURNSTILE_ALLOWED_HOSTNAMES on Render so the hostname check cannot be skipped', () => {
+  it('requires TURNSTILE_ALLOWED_HOSTNAMES on Render qvo-api (role api)', () => {
     process.env.APP_ENV = 'production';
     process.env.RENDER = 'true';
+    process.env.QVO_PROCESS_ROLE = 'api';
     process.env.ADMIN_JWT_SECRET = 's';
     process.env.ALLOWED_ORIGINS = 'https://a.com';
     process.env.TURNSTILE_SECRET_KEY = 's';
@@ -171,4 +172,17 @@ describe('assertProductionSecrets', () => {
     process.env.TURNSTILE_ALLOWED_HOSTNAMES = 'api.qualityvoiceoperations.com';
     expect(() => assertProductionSecrets()).not.toThrow();
   });
+  it.each(['voice', 'worker', 'cron'] as const)(
+    'does not require TURNSTILE_ALLOWED_HOSTNAMES on Render role %s',
+    (role) => {
+      process.env.APP_ENV = 'production';
+      process.env.RENDER = 'true';
+      process.env.QVO_PROCESS_ROLE = role;
+      process.env.ADMIN_JWT_SECRET = 's';
+      process.env.ALLOWED_ORIGINS = 'https://a.com';
+      process.env.TURNSTILE_SECRET_KEY = 's';
+      process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 's';
+      expect(() => assertProductionSecrets()).not.toThrow();
+    },
+  );
 });
