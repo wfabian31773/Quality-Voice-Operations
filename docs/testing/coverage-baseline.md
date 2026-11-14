@@ -59,6 +59,10 @@ undercounted. The headline number is therefore a *floor*. A run in CI (with the
 DB + build available) will be a few points higher. The relative picture between
 modules is accurate.
 
+Tenant isolation / RLS suites are a separate merge gate (not part of this
+ratchet): they need a live Postgres and run in `.github/workflows/db-security.yml`.
+See [`db-security.md`](db-security.md).
+
 ## Headline (backend)
 
 | Metric      | Coverage | Covered / Total |

@@ -1,0 +1,89 @@
+name: DB security suites
+
+# Tenant isolation, cross-tenant denial, and RLS probes against a throwaway
+# Postgres. These suites skip locally when DATABASE_URL is unset; this job
+# is the merge gate so isolation regressions cannot land untested.
+#
+# How to run the same steps locally: docs/testing/db-security.md
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: db-security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  db-security:
+    name: tenant isolation / RLS
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: voiceaihub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      APP_ENV: development
+      # Privileged (migrations, seeds, verify-rls, QVO_RLS_TEST_DATABASE_URL).
+      DATABASE_URL_PRIVILEGED: postgres://postgres:postgres@localhost:5432/voiceaihub_test
+      # Restricted app pool — qvo_app password is set by scripts/ci-setup-postgres-roles.sql.
+      DATABASE_URL: postgres://qvo_app:qvo_app@localhost:5432/voiceaihub_test
+      QVO_RLS_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/voiceaihub_test
+      QVO_RLS_TEST_APP_URL: postgres://qvo_app:qvo_app@localhost:5432/voiceaihub_test
+      ADMIN_JWT_SECRET: ci-db-security-jwt-not-a-secret
+      DISABLE_PHI_LOGGING: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".node-version"
+          cache: "npm"
+
+      - name: Install root dependencies
+        run: bash scripts/ci-npm-ci.sh
+
+      - name: Create Supabase-compatible and qvo_app roles
+        run: npm run db:setup-ci-roles
+
+      - name: Run database migrations
+        run: npm run db:migrate
+
+      - name: Re-apply role passwords after migrations
+        run: npm run db:setup-ci-roles
+
+      - name: Verify RLS SELECT / INSERT isolation
+        run: npm run db:verify-rls
+
+      - name: Run tenant-isolation / cross-tenant / qvo_app RLS suites
+        run: |
+          mkdir -p .ci-logs
+          npm run test:security:db -- --reporter=default --reporter=json --outputFile=.ci-logs/db-security-vitest.json
+          node scripts/ci-assert-vitest-ran.mjs .ci-logs/db-security-vitest.json
+
+      - name: Upload vitest report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-security-vitest
+          path: .ci-logs/
+          if-no-files-found: ignore
+          retention-days: 7

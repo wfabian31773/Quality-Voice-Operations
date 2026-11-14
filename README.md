@@ -45,6 +45,16 @@ npm run db:migrate    # Run migrations
 npm run db:seed       # Seed demo data
 ```
 
+Tenant isolation / RLS suites (throwaway Postgres) are documented in
+[`docs/testing/db-security.md`](docs/testing/db-security.md) and run on every
+PR via `.github/workflows/db-security.yml`:
+
+```bash
+npm run db:setup-ci-roles   # anon / authenticated / service_role / qvo_app
+npm run db:verify-rls       # SELECT + INSERT isolation probes
+npm run test:security:db    # tenantIsolation + cross-tenant HTTP + qvo_app RLS
+```
+
 ### RLS application role (`qvo_app`)
 
 The app must **not** connect as `postgres`. That role has `rolbypassrls=true`, so every tenant RLS policy is ignored and the daily isolation suite (`runAllIsolationTests`) fails `Connected role subject to RLS`. That is the only expected failure: the `Cross-tenant read blocked on <table>` probes run as the NOBYPASSRLS `platform_rls_tester` role while the pool bypasses RLS, so they pass unless a policy really leaks. A probe that gets `permission denied` (a missing grant) fails with `Probe could not read <table>`.

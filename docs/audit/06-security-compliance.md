@@ -42,7 +42,9 @@ RBAC, RLS, JWT/secret handling, PHI redaction, SSRF, audit-log completeness, HIP
 ## S-09 — RLS coverage
 - 52/55 tables covered per readiness audit (March). Migrations 037–065 added several tables (`enterprise_dispatch_*`, `scheduling_*`, `support_*`, `docs_feedback_*`, `marketplace_purchases`, `marketplace_reviews`, `case_studies`, `tenant_notifications`).
 - Spot-check via filenames: `054_sms_rls_fix.sql` and `047_observability_rls.sql` are catch-up migrations; the implication is that some tables were created without RLS and patched later.
-- Recommend a recurring `verify-rls.ts` CI check that fails the build if any table on the tenant-scoped allow-list has `relrowsecurity = false`.
+- CI: `.github/workflows/db-security.yml` runs `npm run db:verify-rls` and
+  `npm run test:security:db` on every PR against a throwaway Postgres 16
+  (roles + migrations applied first). See `docs/testing/db-security.md`.
 
 ## S-10 — RBAC consistency
 - Mini-system writes (dispatch, scheduling, sms-inbox) require `requireMiniSystemWrite` (owner / operations_manager). Reads only require `requireAuth` — any role including viewer can read. Acceptable.

@@ -28,6 +28,7 @@ Follow `docs/runbooks/qvo-app-rls-rollout.md` (Render `qvo-secrets`: `DATABASE_U
 - **Security:** Incorporates PHI redaction, encryption of tenant secrets, and strict enforcement of JWT, Stripe, and connector encryption keys. Inbound webhooks are protected against replay attacks using a combination of in-memory LRU+TTL cache and a durable Postgres backend.
 - **Internationalization (i18n):** Supports multiple languages for the UI, documentation, and URL routing. Localization is handled via JSON files and a custom script for translating documentation using OpenAI.
 - **Linting & Type-checking:** Enforced using ESLint v9 with custom rules for financial calculations, marketing analytics labels/CTAs, and raw white/gray Tailwind colors in marketing UI; TypeScript type-checking runs via GitHub Actions.
+- **Database security suites:** GitHub Actions (`.github/workflows/db-security.yml`) applies migrations on a throwaway Postgres 16 and runs tenant-isolation / cross-tenant / RLS probes (`npm run db:verify-rls`, `npm run test:security:db`). See `docs/testing/db-security.md`.
 - **End-to-End Testing:** Playwright tests are run for critical features like Sales Inbox filters and accessibility audits for tenant status badges.
 - **Drift Detection:** Automated GitHub Actions detect drift in OpenAI Realtime voices and live CRM sandbox validators (HubSpot, Salesforce, Pipedrive, Zoho).
 - **Federated Ingest API:** Allows external voice agent systems to push call completion and ticket creation events.
