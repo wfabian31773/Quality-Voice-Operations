@@ -36,10 +36,13 @@ const m = vi.hoisted(() => ({
   // dynamic imports
   smsService: {} as Record<string, ReturnType<typeof vi.fn>>,
   csatService: {} as Record<string, ReturnType<typeof vi.fn>>,
+  handleInboundSmsMock: vi.fn(),
+  twilioSignatureMiddlewareMock: vi.fn((_req: unknown, _res: unknown, next: () => void) => next()),
 }));
 
 vi.mock('../middleware/twilioSignature', () => ({
-  twilioSignatureMiddleware: (_req: unknown, _res: unknown, next: () => void) => next(),
+  twilioSignatureMiddleware: (req: unknown, res: unknown, next: () => void) =>
+    m.twilioSignatureMiddlewareMock(req, res, next),
 }));
 vi.mock('../../../platform/db', () => ({
   getPlatformPool: () => ({ query: m.poolQueryMock }),
@@ -93,6 +96,10 @@ vi.mock('../../../platform/compliance/HealthcareDeploymentApprovalService', () =
 }));
 vi.mock('../../../platform/sms/SmsConversationService', () => m.smsService);
 vi.mock('../../../platform/analytics/CsatSurveyService', () => m.csatService);
+vi.mock('../../../platform/actions/sms/inbound', () => ({
+  handleInboundSms: m.handleInboundSmsMock,
+  defaultSmsInboundDeps: {},
+}));
 
 import twilioRouter, { buildStreamUrl } from './twilio';
 
@@ -147,6 +154,11 @@ beforeEach(() => {
   m.smsService.updateConversation = vi.fn().mockResolvedValue(undefined);
   m.csatService.tryRecordSmsCsatResponse = vi.fn().mockResolvedValue({ handled: false });
   m.csatService.markCsatOptedOut = vi.fn().mockResolvedValue(undefined);
+  m.handleInboundSmsMock.mockResolvedValue({
+    httpStatus: 200,
+    twiml: '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+  });
+  m.twilioSignatureMiddlewareMock.mockImplementation((_req: unknown, _res: unknown, next: () => void) => next());
 });
 
 describe('POST /twilio/voice', () => {
@@ -620,110 +632,53 @@ describe('POST /twilio/outbound', () => {
 describe('POST /twilio/sms', () => {
   const base = { Body: 'hello', From: '+15551112222', To: '+15553334444', MessageSid: 'SM1' };
 
-  it('returns an empty Response when no routing matches', async () => {
-    m.lookupByPhoneNumberMock.mockResolvedValue(null);
+  it('is a thin adapter: passes the Twilio body to handleInboundSms and returns its TwiML', async () => {
+    m.handleInboundSmsMock.mockResolvedValue({
+      httpStatus: 200,
+      twiml: '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Thanks</Message></Response>',
+    });
     const res = await form(request(app()).post('/twilio/sms'), base);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('<Message>Thanks</Message>');
+    expect(m.handleInboundSmsMock).toHaveBeenCalledTimes(1);
+    const [passed] = m.handleInboundSmsMock.mock.calls[0] as [Record<string, string>, unknown];
+    expect(passed).toMatchObject(base);
+  });
+
+  it('returns 500 empty TwiML when the handler asks Twilio to retry a failed persist', async () => {
+    m.handleInboundSmsMock.mockResolvedValue({
+      httpStatus: 500,
+      twiml: '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+    });
+    const res = await form(request(app()).post('/twilio/sms'), base);
+    expect(res.status).toBe(500);
     expect(res.text).toContain('<Response></Response>');
   });
 
-  it('returns a Message TwiML when an auto-reply matches', async () => {
-    m.lookupByPhoneNumberMock.mockResolvedValue({ tenantId: 't1', phoneNumberId: 'pn1' });
-    m.smsService.getOrCreateConversation = vi.fn().mockResolvedValue({ id: 'conv-1', assigneeUserId: 'u1' });
-    m.smsService.evaluateAutoReplies = vi.fn().mockResolvedValue('Thanks for your message');
+  it('returns empty TwiML when the handler reports an invalid or unrouted payload', async () => {
     const res = await form(request(app()).post('/twilio/sms'), base);
-    expect(res.text).toContain('<Message>Thanks for your message</Message>');
-  });
-
-  it('processes an opt-out by adding the number to the DNC list', async () => {
-    m.lookupByPhoneNumberMock.mockResolvedValue({ tenantId: 't1', phoneNumberId: 'pn1' });
-    m.isSmsOptOutMock.mockReturnValue(true);
-    const res = await form(request(app()).post('/twilio/sms'), { ...base, Body: 'STOP' });
     expect(res.status).toBe(200);
-    expect(m.addToDncMock).toHaveBeenCalledWith('t1', '+15551112222', 'sms', expect.any(String));
-  });
-
-  it.each(['START', ' unstop '])('records %s as opt_in and lifts the SMS-sourced DNC entry', async (keyword) => {
-    m.lookupByPhoneNumberMock.mockResolvedValue({ tenantId: 't1', phoneNumberId: 'pn1' });
-    m.poolQueryMock.mockResolvedValue({ rows: [], rowCount: 1 });
-    const res = await form(request(app()).post('/twilio/sms'), { ...base, Body: keyword });
-    expect(res.status).toBe(200);
-    expect(m.smsService.logConsent).toHaveBeenCalledWith('t1', '+15551112222', 'opt_in', keyword.trim(), 'inbound_sms', 'SM1');
-    const dncDelete = m.poolQueryMock.mock.calls.find(([sql]) => String(sql).includes('DELETE FROM dnc_list'));
-    expect(dncDelete?.[0]).toContain("source = 'sms'");
-    expect(dncDelete?.[1]).toEqual(['t1', '+15551112222']);
-    expect(m.addToDncMock).not.toHaveBeenCalled();
-  });
-
-  it('does not treat ordinary messages as opt-in', async () => {
-    m.lookupByPhoneNumberMock.mockResolvedValue({ tenantId: 't1', phoneNumberId: 'pn1' });
-    await form(request(app()).post('/twilio/sms'), { ...base, Body: 'start time?' });
-    expect(m.smsService.logConsent).not.toHaveBeenCalled();
-    expect(m.poolQueryMock.mock.calls.some(([sql]) => String(sql).includes('dnc_list'))).toBe(false);
-  });
-
-  it('STOP then START re-enables chokepoint sends; STOP alone keeps them refused', async () => {
-    // The consent rows the route writes are what sms.send reads (latest opt_in/opt_out wins).
-    const consentLog: Array<{ phone: string; action: string }> = [];
-    m.smsService.logConsent = vi.fn(async (_t: string, phone: string, action: string) => {
-      consentLog.push({ phone, action });
-    });
-    m.isSmsOptOutMock.mockImplementation((b: string) => b.trim().toLowerCase() === 'stop');
-    m.lookupByPhoneNumberMock.mockResolvedValue({ tenantId: 't1', phoneNumberId: 'pn1' });
-
-    const { createSmsSendAction, sendSystemSms } = await import('../../../platform/actions/sms/send');
-    const { createMemoryStore } = await import('../../../platform/actions/core');
-    const transport = { defaultFromNumber: vi.fn(async () => '+15553334444'), send: vi.fn(async () => ({ sid: 'SMx' })) };
-    const action = createSmsSendAction({
-      store: {
-        isTenantMessagingEnabled: async () => true,
-        isTenantSender: async () => true,
-        loadStoredOutbound: async () => null,
-        latestConsentAction: async (_tx, _t, phone) =>
-          (consentLog.filter((c) => c.phone === phone && c.action !== 'help_request').at(-1)?.action ?? null) as
-            | 'opt_in'
-            | 'opt_out'
-            | null,
-        reserveOutbound: async () => ({ reserved: true }),
-        reserveDeferredSend: async () => ({ reserved: true }),
-        insertOutbound: async () => {},
-        updateOutbound: async () => {},
-        claimDueDeferred: async () => [],
-      },
-      transport,
-      quietHours: { isAllowed: async () => true, nextWindowStart: async (_t, _to, now) => now },
-      config: {
-        smsEnabled: () => true,
-        liveCallExemptSeconds: () => 60,
-        rateLimit: () => ({ max: 0, windowMs: 0 }),
-        statusCallbackUrl: () => null,
-      },
-    });
-    const memory = createMemoryStore();
-    const runtime = { store: memory, withTenantTx: memory.withTenantTx.bind(memory) };
-    const send = () =>
-      sendSystemSms(
-        { tenantId: 't1', to: '+15551112222', templateKey: 'directions', vars: { businessName: 'Fade Lab', address: '12 Main St' }, purpose: 'transactional' },
-        { action, runtime },
-      );
-
-    await form(request(app()).post('/twilio/sms'), { ...base, Body: 'STOP', MessageSid: 'SM-stop' });
-    const refused = await send();
-    expect(refused.ok ? null : refused.error.code).toBe('RECIPIENT_OPTED_OUT');
-    expect(transport.send).not.toHaveBeenCalled();
-
-    await form(request(app()).post('/twilio/sms'), { ...base, Body: 'START', MessageSid: 'SM-start' });
-    expect(consentLog.map((c) => c.action)).toEqual(['opt_out', 'opt_in']);
-    const sent = await send();
-    expect(sent).toMatchObject({ ok: true, data: { status: 'queued' } });
-    expect(transport.send).toHaveBeenCalledTimes(1);
-  });
-
-  it('records a CSAT reply and short-circuits without an auto-reply', async () => {
-    m.lookupByPhoneNumberMock.mockResolvedValue({ tenantId: 't1', phoneNumberId: 'pn1' });
-    m.csatService.tryRecordSmsCsatResponse = vi.fn().mockResolvedValue({ handled: true, csat: { id: 'cs1' } });
-    const res = await form(request(app()).post('/twilio/sms'), { ...base, Body: '5' });
     expect(res.text).toContain('<Response></Response>');
-    expect(m.smsService.getOrCreateConversation).not.toHaveBeenCalled();
+  });
+
+  it('runs signature middleware before handleInboundSms (tools-spec §2.6 #11 403s: tests/security/twilioSignatureMiddleware.test.ts)', async () => {
+    await form(request(app()).post('/twilio/sms'), base);
+    expect(m.twilioSignatureMiddlewareMock).toHaveBeenCalled();
+    expect(m.handleInboundSmsMock).toHaveBeenCalled();
+  });
+
+  it('passes lookupByTo into the handler and returns empty TwiML if the handler throws', async () => {
+    m.lookupByPhoneNumberMock.mockResolvedValue({ tenantId: 't1', phoneNumberId: 'pn1' });
+    m.handleInboundSmsMock.mockImplementation(
+      async (body: { To: string }, deps: { lookupByTo: (to: string) => Promise<unknown> }) => {
+        await deps.lookupByTo(body.To);
+        throw new Error('boom');
+      },
+    );
+    const res = await form(request(app()).post('/twilio/sms'), base);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('<Response></Response>');
+    expect(m.lookupByPhoneNumberMock).toHaveBeenCalledWith(base.To);
   });
 });
 

@@ -26,7 +26,6 @@ export {
   type UserSmsRequest,
 } from './send';
 export { applySmsStatusCallback, type SmsStatusCallback } from './statusCallback';
-export { isSmsOptIn, liftSmsOptOutDnc } from './consent';
 export {
   SMS_MAX_BODY_CHARS,
   getSmsTemplate,
