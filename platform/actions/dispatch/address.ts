@@ -1,6 +1,7 @@
 import type { DispatchAddress } from './schemas';
 
-function fold(value: string): string {
+/** Fold a free-text address so admin-created jobs can match action intake. */
+export function foldAddressText(value: string): string {
   return value
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
@@ -16,7 +17,7 @@ function fold(value: string): string {
  * Includes the unit so Apt 2 and Apt 3 at the same street are distinct.
  */
 export function normalizeAddress(address: DispatchAddress): string {
-  return [address.line1, address.unit ?? '', address.city, address.region, address.postal].map(fold).join('|');
+  return [address.line1, address.unit ?? '', address.city, address.region, address.postal].map(foldAddressText).join('|');
 }
 
 /** Spoken and stored address, unit included when present. */

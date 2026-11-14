@@ -56,3 +56,14 @@ export function canTransition(from: string, to: string): boolean {
   const allowed = VALID_TRANSITIONS[from];
   return Array.isArray(allowed) && allowed.includes(to);
 }
+
+/** Template trigger the admin route (and update_status) fires after a successful transition. */
+export const STATUS_TO_TRIGGER: Record<string, string> = {
+  assigned: 'job_assigned',
+  scheduled: 'job_scheduled',
+  en_route: 'en_route',
+  on_site: 'arrival',
+  completed: 'completed',
+  done: 'completed',
+  cancelled: 'cancelled',
+};

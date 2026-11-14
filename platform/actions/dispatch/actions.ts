@@ -15,6 +15,7 @@ import {
 import { getActionStore } from '../core/runtime';
 import { callerIdMatches, namesMatch } from '../scheduling/identity';
 import { createJobReadback, spokenWindow } from './readback';
+import { fireAdminDispatchNotifications, type DispatchStatusNotifier } from './notify';
 import {
   formattedAndNormalized,
   sqlDispatchRepo,
@@ -32,7 +33,7 @@ import {
   updateStatusOutput,
   type CreateJobPrepareInput,
 } from './schemas';
-import { canTransition, isDispatchJobStatus, type DispatchJobStatus } from './transitions';
+import { canTransition, isDispatchJobStatus, STATUS_TO_TRIGGER, type DispatchJobStatus } from './transitions';
 
 export const CREATE_JOB_PREPARE = 'dispatch.create_job.prepare';
 export const CREATE_JOB_COMMIT = 'dispatch.create_job.commit';
@@ -48,6 +49,8 @@ export interface DispatchActionDeps {
   repo?: DispatchRepoFactory;
   /** Tests inject a fake; production uses scheduling's caller-ID match. */
   callerIdMatches?: typeof callerIdMatches;
+  /** Tests inject a recorder; production calls the admin `fireNotifications` path. */
+  notifyStatusChange?: DispatchStatusNotifier;
 }
 
 function performedBy(ctx: ActionContext): string | null {
@@ -92,6 +95,7 @@ function hiddenNotFound(): ActionResult<never> {
 export function createDispatchActions(deps: DispatchActionDeps = {}): AnyActionDefinition[] {
   const repoFor = deps.repo ?? sqlDispatchRepo;
   const matchCaller = deps.callerIdMatches ?? callerIdMatches;
+  const notifyStatusChange = deps.notifyStatusChange ?? fireAdminDispatchNotifications;
 
   const createJobPrepareAction = defineAction({
     name: CREATE_JOB_PREPARE,
@@ -145,7 +149,7 @@ export function createDispatchActions(deps: DispatchActionDeps = {}): AnyActionD
       await repo.lockAddress(normalizedAddress);
       const windowStart = new Date(payload.window.start);
       const windowEnd = new Date(payload.window.end);
-      const existing = await repo.findDuplicate(normalizedAddress, windowStart, windowEnd);
+      const existing = await repo.findDuplicate(normalizedAddress, windowStart, windowEnd, formattedAddress);
       if (existing) {
         return actionOk({
           jobId: existing.id,
@@ -224,11 +228,28 @@ export function createDispatchActions(deps: DispatchActionDeps = {}): AnyActionD
         metadata: input.eta ? { eta: input.eta } : {},
         now: ctx.now,
       });
-      return actionOk({
-        jobId: updated.id,
-        status: updated.status,
-        fromStatus: job.status,
-      });
+      const trigger = STATUS_TO_TRIGGER[updated.status];
+      if (trigger) {
+        try {
+          await notifyStatusChange({
+            tenantId: ctx.tenantId,
+            jobId: updated.id,
+            fromStatus: job.status,
+            toStatus: updated.status,
+            trigger,
+          });
+        } catch {
+          // Admin fires notifications without awaiting; a send failure must not roll back the write.
+        }
+      }
+      return actionOk(
+        {
+          jobId: updated.id,
+          status: updated.status,
+          fromStatus: job.status,
+        },
+        trigger ? { effects: [{ type: `job.${updated.status === 'done' ? 'completed' : updated.status}`, payload: { jobId: updated.id, trigger } }] } : undefined,
+      );
     },
   });
 

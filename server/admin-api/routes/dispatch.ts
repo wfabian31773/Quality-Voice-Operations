@@ -48,7 +48,7 @@ import {
   type GeoPoint,
 } from '../../../platform/integrations/routing';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
-import { TERMINAL_JOB_STATUSES, VALID_TRANSITIONS } from '../../../platform/actions/dispatch/transitions';
+import { STATUS_TO_TRIGGER, TERMINAL_JOB_STATUSES, VALID_TRANSITIONS } from '../../../platform/actions/dispatch/transitions';
 import {
   DISPATCH_MERGE_TOKENS,
   countSmsSegments,
@@ -205,16 +205,6 @@ async function validateResourceAssignment(
 
   return { valid: true };
 }
-
-const STATUS_TO_TRIGGER: Record<string, string> = {
-  assigned: 'job_assigned',
-  scheduled: 'job_scheduled',
-  en_route: 'en_route',
-  on_site: 'arrival',
-  completed: 'completed',
-  done: 'completed',
-  cancelled: 'cancelled',
-};
 
 export async function fireNotifications(
   pool: ReturnType<typeof getPlatformPool>,

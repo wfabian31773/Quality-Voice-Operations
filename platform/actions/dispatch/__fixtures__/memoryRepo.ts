@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { foldAddressText } from '../address';
 import { formattedAndNormalized, type DispatchJobRecord, type DispatchRepoFactory } from '../repo';
 import { isOpenJobStatus, type DispatchJobStatus } from '../transitions';
 
@@ -39,12 +40,13 @@ export function createMemoryDispatchRepo(): { state: MemoryDispatchState; repo: 
       async lockAddress(normalizedAddress) {
         state.locks.push(`${tenantId}\0${normalizedAddress}`);
       },
-      async findDuplicate(normalizedAddress, windowStart, windowEnd) {
+      async findDuplicate(normalizedAddress, windowStart, windowEnd, formattedAddress) {
+        const folded = foldAddressText(formattedAddress);
         return (
           own().find(
             (job) =>
               isOpenJobStatus(job.status)
-              && job.normalizedAddress === normalizedAddress
+              && (job.normalizedAddress === normalizedAddress || foldAddressText(job.address) === folded)
               && job.etaStart != null
               && job.etaEnd != null
               && job.etaStart < windowEnd

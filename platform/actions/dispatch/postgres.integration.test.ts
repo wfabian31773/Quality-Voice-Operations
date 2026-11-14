@@ -14,6 +14,7 @@ import {
   type ActionResult,
   type TenantTx,
 } from '../core';
+import { formatAddress } from './address';
 import {
   CREATE_JOB_COMMIT,
   CREATE_JOB_PREPARE,
@@ -21,6 +22,7 @@ import {
   GET_JOB_STATUS,
   UPDATE_STATUS,
 } from './actions';
+import type { DispatchStatusNotification } from './notify';
 
 const ADMIN_URL_RAW =
   process.env.DATABASE_URL ?? process.env.DATABASE_URL_PRIVILEGED ?? 'postgresql://ubuntu@127.0.0.1:5432/postgres';
@@ -129,7 +131,12 @@ describe.skipIf(!dbReachable)('dispatch actions on Postgres', () => {
   const DB = `qvo_dispatch_act_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
   let pool: Pool;
   let seq = 0;
-  const registry = createDispatchActions();
+  const notified: DispatchStatusNotification[] = [];
+  const registry = createDispatchActions({
+    notifyStatusChange: (event) => {
+      notified.push(event);
+    },
+  });
 
   async function withTenantTx<T>(tenantId: string, fn: (tx: TenantTx) => Promise<T>): Promise<T> {
     const client = await pool.connect();
@@ -269,6 +276,22 @@ describe.skipIf(!dbReachable)('dispatch actions on Postgres', () => {
     expect((await events(tenantId)).filter((e) => e.event_type === 'created')).toHaveLength(1);
   });
 
+  it('treats an overlapping admin-created job at the same address as a duplicate', async () => {
+    const tenantId = await insertTenant('admin-dup');
+    await pool.query(
+      `INSERT INTO dispatch_jobs (
+          tenant_id, title, status, address, eta_start, eta_end, contact_name, contact_phone, metadata
+        ) VALUES ($1, 'Existing leak', 'assigned', $2, $3, $4, 'Admin Desk', '+15555550199', '{}'::jsonb)`,
+      [tenantId, formatAddress(ADDRESS), WINDOW.start, WINDOW.end],
+    );
+    const p = await prepare(tenantId);
+    const committed = data<{ jobId: string; duplicate: boolean }>(
+      await act(CREATE_JOB_COMMIT, ctx(tenantId), { confirmationToken: p.confirmationToken }),
+    );
+    expect(committed.duplicate).toBe(true);
+    expect(await jobs(tenantId)).toHaveLength(1);
+  });
+
   it('does not dedupe a job in another tenant at the same address', async () => {
     const a = await insertTenant('iso-a');
     const b = await insertTenant('iso-b');
@@ -281,6 +304,24 @@ describe.skipIf(!dbReachable)('dispatch actions on Postgres', () => {
     expect(other.duplicate).toBe(false);
     expect(await jobs(a)).toHaveLength(1);
     expect(await jobs(b)).toHaveLength(1);
+  });
+
+  it('notifies the admin SMS path on a successful en_route transition', async () => {
+    const tenantId = await insertTenant('sms');
+    const p = await prepare(tenantId);
+    const { jobId } = data<{ jobId: string }>(
+      await act(CREATE_JOB_COMMIT, ctx(tenantId), { confirmationToken: p.confirmationToken }),
+    );
+    data(await act(UPDATE_STATUS, owner(tenantId, { idempotencyKey: 'n0' }), { jobId, status: 'assigned' }));
+    const enRoute = await act(UPDATE_STATUS, owner(tenantId, { idempotencyKey: 'n1' }), {
+      jobId,
+      status: 'en_route',
+      eta: '2026-10-20T14:30:00-04:00',
+    });
+    expect(enRoute.ok).toBe(true);
+    if (!enRoute.ok) return;
+    expect(enRoute.effects).toEqual([{ type: 'job.en_route', payload: { jobId, trigger: 'en_route' } }]);
+    expect(notified.filter((n) => n.jobId === jobId).map((n) => n.trigger)).toEqual(['job_assigned', 'en_route']);
   });
 
   it('lets one of two concurrent status updates win; the other gets CONFLICT', async () => {

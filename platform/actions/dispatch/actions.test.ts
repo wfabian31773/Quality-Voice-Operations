@@ -8,8 +8,10 @@ import {
   GET_JOB_STATUS,
   UPDATE_STATUS,
 } from './actions';
+import { formatAddress } from './address';
 import { createMemoryDispatchRepo } from './__fixtures__/memoryRepo';
 import { dispatchActions } from './index';
+import type { DispatchStatusNotification } from './notify';
 
 const NOW = new Date('2026-10-19T12:00:00.000Z');
 const TENANT = 'tenant-a';
@@ -60,10 +62,14 @@ function ownerCtx(overrides: Partial<ActionContext> = {}): ActionContext {
 function setup(opts: { callerMatch?: boolean } = {}) {
   const store = createMemoryStore();
   const dispatch = createMemoryDispatchRepo();
+  const notifications: DispatchStatusNotification[] = [];
   const callerMatch = opts.callerMatch ?? true;
   const registry = createDispatchActions({
     repo: dispatch.repo,
     callerIdMatches: async () => callerMatch,
+    notifyStatusChange: (event) => {
+      notifications.push(event);
+    },
   });
   const deps = { store, registry, withTenantTx: store.withTenantTx.bind(store) };
   let seq = 0;
@@ -77,7 +83,7 @@ function setup(opts: { callerMatch?: boolean } = {}) {
       input,
       deps,
     );
-  return { store, dispatch, run };
+  return { store, dispatch, notifications, run };
 }
 
 function data<T = Record<string, unknown>>(result: ActionResult): T {
@@ -166,6 +172,26 @@ describe('dispatch.create_job.prepare / commit', () => {
     expect(dispatch.state.events.filter((e) => e.eventType === 'created')).toHaveLength(1);
   });
 
+  it('treats an overlapping admin-created job at the same address as a duplicate', async () => {
+    const { dispatch, run } = setup();
+    dispatch.state.jobs.push({
+      id: 'admin-job',
+      tenantId: TENANT,
+      status: 'assigned',
+      etaStart: new Date(WINDOW.start),
+      etaEnd: new Date(WINDOW.end),
+      scheduledAt: new Date(WINDOW.start),
+      createdAt: NOW,
+      contactName: 'Admin Desk',
+      contactPhone: '+15555550199',
+      address: formatAddress(ADDRESS),
+      normalizedAddress: '',
+    });
+    const committed = data<Committed>((await prepareAndCommit(run)).committed);
+    expect(committed).toMatchObject({ jobId: 'admin-job', duplicate: true });
+    expect(dispatch.state.jobs).toHaveLength(1);
+  });
+
   it('does not treat a different unit, a non-overlapping window, or another tenant as a duplicate', async () => {
     const { dispatch, run } = setup();
     data((await prepareAndCommit(run)).committed);
@@ -237,6 +263,21 @@ describe('dispatch.update_status', () => {
       'pending->assigned',
       'assigned->en_route',
     ]);
+  });
+
+  it('emits job.en_route and notifies the admin SMS path after a successful en_route transition', async () => {
+    const { notifications, update } = await opened();
+    data(await update({ status: 'assigned' }));
+    const enRoute = await update({ status: 'en_route', eta: '2026-10-20T14:30:00-04:00' });
+    expect(enRoute.ok).toBe(true);
+    if (!enRoute.ok) return;
+    expect(enRoute.effects).toEqual([
+      {
+        type: 'job.en_route',
+        payload: { jobId: data<{ jobId: string }>(enRoute).jobId, trigger: 'en_route' },
+      },
+    ]);
+    expect(notifications.map((n) => n.trigger)).toEqual(['job_assigned', 'en_route']);
   });
 
   it('rejects an ETA at or before the job window start', async () => {

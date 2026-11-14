@@ -15,7 +15,8 @@ export {
   updateStatusAction,
   type DispatchActionDeps,
 } from './actions';
-export { formatAddress, normalizeAddress } from './address';
+export { foldAddressText, formatAddress, normalizeAddress } from './address';
+export { fireAdminDispatchNotifications, type DispatchStatusNotification, type DispatchStatusNotifier } from './notify';
 export { createJobReadback, spokenWindow } from './readback';
 export { advisoryLockKey, formattedAndNormalized, sqlDispatchRepo } from './repo';
 export {
@@ -24,6 +25,7 @@ export {
   isDispatchJobStatus,
   isOpenJobStatus,
   isTerminalJobStatus,
+  STATUS_TO_TRIGGER,
   TERMINAL_JOB_STATUSES,
   VALID_TRANSITIONS,
   type DispatchJobStatus,

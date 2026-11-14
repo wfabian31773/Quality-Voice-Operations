@@ -37,7 +37,12 @@ export interface NewDispatchEvent {
 
 export interface DispatchRepo {
   lockAddress(normalizedAddress: string): Promise<void>;
-  findDuplicate(normalizedAddress: string, windowStart: Date, windowEnd: Date): Promise<DispatchJobRecord | null>;
+  findDuplicate(
+    normalizedAddress: string,
+    windowStart: Date,
+    windowEnd: Date,
+    formattedAddress: string,
+  ): Promise<DispatchJobRecord | null>;
   insertJob(job: NewDispatchJob): Promise<DispatchJobRecord>;
   insertEvent(event: NewDispatchEvent): Promise<void>;
   getForUpdate(jobId: string): Promise<DispatchJobRecord | null>;
@@ -122,19 +127,23 @@ export const sqlDispatchRepo: DispatchRepoFactory = (tx, tenantId) => ({
     ]);
   },
 
-  async findDuplicate(normalizedAddress, windowStart, windowEnd) {
+  async findDuplicate(normalizedAddress, windowStart, windowEnd, formattedAddress) {
     const { rows } = await tx.query(
       `SELECT ${JOB_COLUMNS}
          FROM dispatch_jobs
         WHERE tenant_id = $1
           AND status NOT IN ('completed', 'cancelled', 'done', 'incomplete')
-          AND metadata #>> '{qvo,address,normalized}' = $2
+          AND (
+            metadata #>> '{qvo,address,normalized}' = $2
+            OR trim(regexp_replace(lower(coalesce(address, '')), '[^a-z0-9]+', ' ', 'g'))
+               = trim(regexp_replace(lower($5::text), '[^a-z0-9]+', ' ', 'g'))
+          )
           AND eta_start < $4
           AND eta_end > $3
         ORDER BY created_at ASC
         LIMIT 1
         FOR UPDATE`,
-      [tenantId, normalizedAddress, windowStart.toISOString(), windowEnd.toISOString()],
+      [tenantId, normalizedAddress, windowStart.toISOString(), windowEnd.toISOString(), formattedAddress],
     );
     return rows[0] ? mapJob(rows[0]) : null;
   },
