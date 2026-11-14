@@ -305,7 +305,28 @@ describe('POST /auth/signup captcha gate', () => {
     it("blocks signup when the token's action is another form's", async () => {
       const res = await signupWithSiteverifyAction('book-demo');
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/action does not match/i);
+      expect(res.body.error).toMatch(/CAPTCHA verification failed/i);
+      expect(a.clientQueryMock).not.toHaveBeenCalled();
+    });
+
+    it('blocks signup when the token hostname is not on TURNSTILE_ALLOWED_HOSTNAMES', async () => {
+      process.env.TURNSTILE_ALLOWED_HOSTNAMES = 'api.qualityvoiceoperations.com';
+      vi.stubGlobal('fetch', vi.fn(async () => ({
+        json: async () => ({
+          success: true,
+          hostname: 'evil.example',
+          action: 'signup',
+        }),
+      })));
+      const res = await request(app()).post('/auth/signup').send({
+        name: 'Ada',
+        email: 'ada@example.com',
+        password: 'password1',
+        plan: 'starter',
+        captchaToken: 'ok-token',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/CAPTCHA verification failed/i);
       expect(a.clientQueryMock).not.toHaveBeenCalled();
     });
   });

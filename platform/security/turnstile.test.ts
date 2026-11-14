@@ -7,23 +7,21 @@ vi.mock('../core/logger', () => ({
 }));
 
 import {
-  DEFAULT_TURNSTILE_ALLOWED_HOSTNAMES,
   TURNSTILE_ACTIONS,
+  TURNSTILE_CAPTCHA_FAILED_ERROR,
   parseTurnstileAllowedHostnames,
+  resetTurnstileHostnameAllowListWarning,
   verifyTurnstile,
 } from './turnstile';
 
 describe('parseTurnstileAllowedHostnames', () => {
-  it('defaults to the QVO apex plus api. and voice. subdomains', () => {
-    expect(parseTurnstileAllowedHostnames(undefined)).toEqual([
-      'qualityvoiceoperations.com',
-      'api.qualityvoiceoperations.com',
-      'voice.qualityvoiceoperations.com',
-    ]);
-    expect(parseTurnstileAllowedHostnames('')).toEqual([...DEFAULT_TURNSTILE_ALLOWED_HOSTNAMES]);
+  it('treats unset or blank input as an empty allow-list (no hostname check)', () => {
+    expect(parseTurnstileAllowedHostnames(undefined)).toEqual([]);
+    expect(parseTurnstileAllowedHostnames('')).toEqual([]);
+    expect(parseTurnstileAllowedHostnames('  , ; ')).toEqual([]);
   });
 
-  it('replaces the default list when an env list is set', () => {
+  it('parses a comma-separated list and strips a trailing DNS dot', () => {
     expect(parseTurnstileAllowedHostnames('localhost, preview.example.com.')).toEqual([
       'localhost',
       'preview.example.com',
@@ -39,6 +37,7 @@ describe('verifyTurnstile', () => {
   beforeEach(() => {
     process.env.TURNSTILE_SECRET_KEY = 'test-turnstile-secret';
     delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+    resetTurnstileHostnameAllowListWarning();
     log.warn.mockReset();
     log.error.mockReset();
   });
@@ -57,42 +56,52 @@ describe('verifyTurnstile', () => {
     })) as unknown as typeof fetch;
   }
 
-  it('accepts a matching hostname and action', async () => {
+  const okOpts = {
+    token: 'ok-token',
+    ip: '203.0.113.10',
+    expectedAction: TURNSTILE_ACTIONS.signup,
+  };
+
+  it('accepts a matching hostname and action when the allow-list is set', async () => {
+    process.env.TURNSTILE_ALLOWED_HOSTNAMES = 'qualityvoiceoperations.com,api.qualityvoiceoperations.com';
     mockSiteverify({
       success: true,
       hostname: 'qualityvoiceoperations.com',
       action: TURNSTILE_ACTIONS.signup,
     });
 
-    await expect(verifyTurnstile({
-      token: 'ok-token',
-      ip: '203.0.113.10',
-      expectedAction: TURNSTILE_ACTIONS.signup,
-    })).resolves.toEqual({ ok: true });
+    await expect(verifyTurnstile(okOpts)).resolves.toEqual({ ok: true });
+    expect(log.warn).not.toHaveBeenCalled();
   });
 
-  it('rejects a hostname outside the allowed QVO list', async () => {
+  it('rejects a hostname outside TURNSTILE_ALLOWED_HOSTNAMES with the failed-captcha error', async () => {
+    process.env.TURNSTILE_ALLOWED_HOSTNAMES = 'qualityvoiceoperations.com';
     mockSiteverify({
       success: true,
       hostname: 'evil.example',
       action: TURNSTILE_ACTIONS.signup,
     });
 
-    const result = await verifyTurnstile({
-      token: 'ok-token',
-      ip: '203.0.113.10',
-      expectedAction: TURNSTILE_ACTIONS.signup,
-    });
+    const result = await verifyTurnstile(okOpts);
 
     expect(result).toEqual({
       ok: false,
       status: 400,
       reason: 'hostname_mismatch',
-      error: 'CAPTCHA hostname is not allowed for this form',
+      error: TURNSTILE_CAPTCHA_FAILED_ERROR,
     });
+    expect(log.warn).toHaveBeenCalledWith('Turnstile verification rejected', expect.objectContaining({
+      reason: 'hostname_mismatch',
+      hostname: 'evil.example',
+      expectedAction: TURNSTILE_ACTIONS.signup,
+    }));
+    const logged = JSON.stringify(log.warn.mock.calls);
+    expect(logged).not.toContain('ok-token');
+    expect(logged).not.toContain('test-turnstile-secret');
   });
 
-  it('rejects when the returned action does not match the form', async () => {
+  it('rejects when the returned action does not match the form with the failed-captcha error', async () => {
+    process.env.TURNSTILE_ALLOWED_HOSTNAMES = 'api.qualityvoiceoperations.com';
     mockSiteverify({
       success: true,
       hostname: 'api.qualityvoiceoperations.com',
@@ -100,8 +109,7 @@ describe('verifyTurnstile', () => {
     });
 
     const result = await verifyTurnstile({
-      token: 'ok-token',
-      ip: '203.0.113.10',
+      ...okOpts,
       expectedAction: TURNSTILE_ACTIONS.bookDemo,
     });
 
@@ -109,11 +117,48 @@ describe('verifyTurnstile', () => {
       ok: false,
       status: 400,
       reason: 'action_mismatch',
-      error: 'CAPTCHA action does not match this form',
+      error: TURNSTILE_CAPTCHA_FAILED_ERROR,
+    });
+    expect(log.warn).toHaveBeenCalledWith('Turnstile verification rejected', expect.objectContaining({
+      reason: 'action_mismatch',
+      action: TURNSTILE_ACTIONS.signup,
+      expectedAction: TURNSTILE_ACTIONS.bookDemo,
+    }));
+  });
+
+  it('accepts any hostname when TURNSTILE_ALLOWED_HOSTNAMES is unset, and warns once', async () => {
+    mockSiteverify({
+      success: true,
+      hostname: 'localhost',
+      action: TURNSTILE_ACTIONS.signup,
+    });
+
+    await expect(verifyTurnstile(okOpts)).resolves.toEqual({ ok: true });
+    await expect(verifyTurnstile(okOpts)).resolves.toEqual({ ok: true });
+
+    const allowListWarnings = log.warn.mock.calls.filter(([message]) =>
+      String(message).includes('TURNSTILE_ALLOWED_HOSTNAMES is unset'),
+    );
+    expect(allowListWarnings).toHaveLength(1);
+  });
+
+  it('still rejects a wrong action when the hostname allow-list is unset', async () => {
+    mockSiteverify({
+      success: true,
+      hostname: 'localhost',
+      action: TURNSTILE_ACTIONS.bookDemo,
+    });
+
+    const result = await verifyTurnstile(okOpts);
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      reason: 'action_mismatch',
+      error: TURNSTILE_CAPTCHA_FAILED_ERROR,
     });
   });
 
-  it('accepts a hostname from TURNSTILE_ALLOWED_HOSTNAMES instead of the default list', async () => {
+  it('accepts a hostname from TURNSTILE_ALLOWED_HOSTNAMES', async () => {
     process.env.TURNSTILE_ALLOWED_HOSTNAMES = 'localhost,preview.qualityvoiceoperations.com';
     mockSiteverify({
       success: true,
@@ -164,7 +209,7 @@ describe('verifyTurnstile', () => {
       ok: false,
       status: 400,
       reason: 'verification_failed',
-      error: 'CAPTCHA verification failed. Please try again.',
+      error: TURNSTILE_CAPTCHA_FAILED_ERROR,
     });
     expect(log.warn).toHaveBeenCalledWith('Turnstile verification rejected', {
       reason: 'verification_failed',
@@ -178,7 +223,8 @@ describe('verifyTurnstile', () => {
     expect(logged).not.toContain('test-turnstile-secret');
   });
 
-  it('logs the returned hostname and action on a mismatch', async () => {
+  it('logs the returned hostname and action on a mismatch without the token', async () => {
+    process.env.TURNSTILE_ALLOWED_HOSTNAMES = 'qualityvoiceoperations.com';
     mockSiteverify({
       success: true,
       hostname: 'evil.example',
@@ -198,6 +244,8 @@ describe('verifyTurnstile', () => {
       action: TURNSTILE_ACTIONS.signup,
       errorCodes: undefined,
     });
+    const logged = JSON.stringify(log.warn.mock.calls);
+    expect(logged).not.toContain('sensitive-token');
   });
 
   it('fails closed when the siteverify request rejects', async () => {
@@ -215,7 +263,7 @@ describe('verifyTurnstile', () => {
       ok: false,
       status: 400,
       reason: 'verification_failed',
-      error: 'CAPTCHA verification failed. Please try again.',
+      error: TURNSTILE_CAPTCHA_FAILED_ERROR,
     });
     expect(log.error).toHaveBeenCalledWith('Turnstile verification failed', {
       reason: 'verification_failed',

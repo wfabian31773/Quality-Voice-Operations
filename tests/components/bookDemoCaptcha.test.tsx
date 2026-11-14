@@ -70,7 +70,7 @@ describe('BookDemo CAPTCHA', () => {
     (window as unknown as { turnstile?: unknown }).turnstile = turnstile;
     const fetchMock = stubFetch(
       () => Response.json({ captchaRequired: true, siteKey: '0xpublic-site-key' }),
-      () => Response.json({ error: 'CAPTCHA action does not match this form' }, { status: 400 }),
+      () => Response.json({ error: 'CAPTCHA verification failed. Please try again.' }, { status: 400 }),
     );
     const { container } = renderBookDemo();
 
@@ -86,7 +86,7 @@ describe('BookDemo CAPTCHA', () => {
     fireEvent.change(screen.getByLabelText(/company/i), { target: { value: 'Analytical Engines' } });
     fireEvent.submit(container.querySelector('form')!);
 
-    expect(await screen.findByText(/action does not match/i)).toBeTruthy();
+    expect(await screen.findByText(/CAPTCHA verification failed/i)).toBeTruthy();
     const post = fetchMock.mock.calls.find(([url]) => url === '/api/book-demo');
     expect(JSON.parse(post![1]!.body as string)).toMatchObject({
       email: 'ada@example.com',

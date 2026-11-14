@@ -182,7 +182,7 @@ describe('POST /book-demo', () => {
     it("blocks recordLead when the token's action is another form's", async () => {
       const res = await submitWithSiteverifyAction('signup');
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/action does not match/i);
+      expect(res.body.error).toMatch(/CAPTCHA verification failed/i);
       expect(a.recordLeadMock).not.toHaveBeenCalled();
     });
   });
