@@ -8,6 +8,9 @@ let anomalyTimer: ReturnType<typeof setInterval> | null = null;
 let analysisTimer: ReturnType<typeof setInterval> | null = null;
 let weeklyTimer: ReturnType<typeof setInterval> | null = null;
 let impactTimer: ReturnType<typeof setInterval> | null = null;
+let initialAnomalyTimer: ReturnType<typeof setTimeout> | null = null;
+/** Bumped on start/stop so a deferred first-run cannot fire after leadership loss. */
+let insightsGeneration = 0;
 
 const ANOMALY_INTERVAL_MS = 30 * 60 * 1000;
 const ANALYSIS_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -104,21 +107,44 @@ async function runImpactMeasurementCycle(): Promise<void> {
 }
 
 export function startInsightsScheduler(): void {
+  if (anomalyTimer) return;
+  const generation = ++insightsGeneration;
   logger.info('Starting insights scheduler', {
     anomalyIntervalMin: ANOMALY_INTERVAL_MS / 60000,
     analysisIntervalHr: ANALYSIS_INTERVAL_MS / 3600000,
     weeklyCheckIntervalHr: WEEKLY_CHECK_INTERVAL_MS / 3600000,
   });
 
-  setTimeout(() => runAnomalyDetectionCycle(), 60_000);
+  initialAnomalyTimer = setTimeout(() => {
+    initialAnomalyTimer = null;
+    if (insightsGeneration !== generation) return;
+    void runAnomalyDetectionCycle();
+  }, 60_000);
 
-  anomalyTimer = setInterval(runAnomalyDetectionCycle, ANOMALY_INTERVAL_MS);
-  analysisTimer = setInterval(runInsightsAnalysisCycle, ANALYSIS_INTERVAL_MS);
-  weeklyTimer = setInterval(runWeeklyReportCycle, WEEKLY_CHECK_INTERVAL_MS);
-  impactTimer = setInterval(runImpactMeasurementCycle, IMPACT_MEASUREMENT_INTERVAL_MS);
+  anomalyTimer = setInterval(() => {
+    if (insightsGeneration !== generation) return;
+    void runAnomalyDetectionCycle();
+  }, ANOMALY_INTERVAL_MS);
+  analysisTimer = setInterval(() => {
+    if (insightsGeneration !== generation) return;
+    void runInsightsAnalysisCycle();
+  }, ANALYSIS_INTERVAL_MS);
+  weeklyTimer = setInterval(() => {
+    if (insightsGeneration !== generation) return;
+    void runWeeklyReportCycle();
+  }, WEEKLY_CHECK_INTERVAL_MS);
+  impactTimer = setInterval(() => {
+    if (insightsGeneration !== generation) return;
+    void runImpactMeasurementCycle();
+  }, IMPACT_MEASUREMENT_INTERVAL_MS);
 }
 
 export function stopInsightsScheduler(): void {
+  insightsGeneration += 1;
+  if (initialAnomalyTimer) {
+    clearTimeout(initialAnomalyTimer);
+    initialAnomalyTimer = null;
+  }
   if (anomalyTimer) {
     clearInterval(anomalyTimer);
     anomalyTimer = null;

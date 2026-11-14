@@ -78,6 +78,12 @@ export class LeaderElector {
   private client: LeaderLockClient | null = null;
   private leader = false;
   private stopped = false;
+  /**
+   * Bumped whenever leadership or the lock connection changes. In-flight
+   * heartbeat callbacks capture the epoch they were scheduled with and no-op
+   * if it no longer matches, so a lost leader cannot keep fencing/heartbeating.
+   */
+  private epoch = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private healthTimer: ReturnType<typeof setTimeout> | null = null;
   private attempt: Promise<void> | null = null;
@@ -142,6 +148,7 @@ export class LeaderElector {
           return;
         }
         this.leader = true;
+        this.epoch += 1;
         logger.info('Acquired worker leadership');
         this.scheduleHealthCheck();
         try {
@@ -169,31 +176,52 @@ export class LeaderElector {
     }, this.retryIntervalMs);
   }
 
+  private clearHealthTimer(): void {
+    if (this.healthTimer) {
+      clearTimeout(this.healthTimer);
+      this.healthTimer = null;
+    }
+  }
+
   private scheduleHealthCheck(): void {
+    this.clearHealthTimer();
     if (this.stopped || !this.leader) return;
+    const epoch = this.epoch;
+    const client = this.client;
+    if (!client) return;
     this.healthTimer = setTimeout(() => {
       this.healthTimer = null;
-      const client = this.client;
-      if (!client || !this.leader) return;
+      if (!this.heartbeatStillValid(epoch, client)) return;
       client
         .query('SELECT 1')
-        .then(() => this.scheduleHealthCheck())
+        .then(() => {
+          if (!this.heartbeatStillValid(epoch, client)) return;
+          this.scheduleHealthCheck();
+        })
         .catch((err) => {
+          if (!this.heartbeatStillValid(epoch, client)) return;
           logger.warn('Leader lock health check failed', { error: String(err) });
           void this.handleConnectionLost(client);
         });
     }, this.healthCheckIntervalMs);
   }
 
+  /** True only while this process still holds leadership on `client`. */
+  private heartbeatStillValid(epoch: number, client: LeaderLockClient): boolean {
+    return !this.stopped && this.leader && this.epoch === epoch && this.client === client;
+  }
+
+  private dropLeadershipState(): void {
+    this.leader = false;
+    this.epoch += 1;
+    this.clearHealthTimer();
+  }
+
   private async handleConnectionLost(client: LeaderLockClient): Promise<void> {
     if (client !== this.client) return;
     const wasLeader = this.leader;
-    this.leader = false;
+    this.dropLeadershipState();
     this.client = null;
-    if (this.healthTimer) {
-      clearTimeout(this.healthTimer);
-      this.healthTimer = null;
-    }
     client.end().catch(() => {});
     if (this.stopped) return;
     if (wasLeader) {
@@ -209,11 +237,7 @@ export class LeaderElector {
 
   /** Undo a partial onAcquire: stop what was started, then free the lock. */
   private async abandonLeadership(): Promise<void> {
-    this.leader = false;
-    if (this.healthTimer) {
-      clearTimeout(this.healthTimer);
-      this.healthTimer = null;
-    }
+    this.dropLeadershipState();
     try {
       await this.opts.onLose();
     } catch (err) {
@@ -232,7 +256,7 @@ export class LeaderElector {
     const client = this.client;
     this.client = null;
     const wasLeader = this.leader;
-    this.leader = false;
+    this.dropLeadershipState();
     if (!client) return;
     if (wasLeader) {
       try {
@@ -253,10 +277,7 @@ export class LeaderElector {
       clearTimeout(this.retryTimer);
       this.retryTimer = null;
     }
-    if (this.healthTimer) {
-      clearTimeout(this.healthTimer);
-      this.healthTimer = null;
-    }
+    this.clearHealthTimer();
     if (this.attempt) await this.attempt.catch(() => {});
     await this.release();
   }

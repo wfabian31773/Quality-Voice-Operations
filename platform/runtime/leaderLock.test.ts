@@ -12,12 +12,17 @@ class FakeClient implements LeaderLockClient {
   queries: string[] = [];
   failNext = false;
   ended = false;
+  /** When set, `SELECT 1` waits for this promise (stale in-flight heartbeat). */
+  select1Gate: Promise<void> | null = null;
   async connect() {}
   async query(sql: string) {
     this.queries.push(sql);
     if (this.failNext) {
       this.failNext = false;
       throw new Error('connection lost');
+    }
+    if (sql === 'SELECT 1' && this.select1Gate) {
+      await this.select1Gate;
     }
     if (sql.includes('pg_try_advisory_lock')) {
       if (!FakeClient.lockHolder || FakeClient.lockHolder === this) {
@@ -169,6 +174,48 @@ describe('LeaderElector', () => {
     await a.e.stop();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(b.e.isLeader()).toBe(false);
+  });
+
+  it('stops the heartbeat after leadership is lost', async () => {
+    const { e, clients, onLose } = elector({ healthCheckIntervalMs: 1_000 });
+    await e.start();
+    for (const l of clients[0].listeners.error ?? []) l(new Error('reset'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(e.isLeader()).toBe(false);
+    expect(onLose).toHaveBeenCalledTimes(1);
+    const before = clients[0].queries.filter((q) => q === 'SELECT 1').length;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(clients[0].queries.filter((q) => q === 'SELECT 1')).toHaveLength(before);
+    await e.stop();
+  });
+
+  it('a stale in-flight health check does not keep heartbeating after loss', async () => {
+    const { e, clients, onLose, onAcquire } = elector({ healthCheckIntervalMs: 1_000 });
+    await e.start();
+    let releaseSelect!: () => void;
+    clients[0].select1Gate = new Promise<void>((resolve) => {
+      releaseSelect = resolve;
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(clients[0].queries.filter((q) => q === 'SELECT 1')).toHaveLength(1);
+
+    for (const l of clients[0].listeners.error ?? []) l(new Error('reset'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onLose).toHaveBeenCalledTimes(1);
+    expect(e.isLeader()).toBe(false);
+
+    releaseSelect();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(clients[0].queries.filter((q) => q === 'SELECT 1')).toHaveLength(1);
+
+    // Standby retry on a new connection still works; the stale callback did not
+    // stack a second heartbeat on the dead client.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(e.isLeader()).toBe(true);
+    expect(onAcquire).toHaveBeenCalledTimes(2);
+    expect(clients).toHaveLength(2);
+    await e.stop();
   });
 });
 

@@ -4,6 +4,9 @@ import { checkAllTenantMilestones } from './CaseStudyService';
 const logger = createLogger('MILESTONE_SCHEDULER');
 
 let milestoneTimer: ReturnType<typeof setInterval> | null = null;
+let initialMilestoneTimer: ReturnType<typeof setTimeout> | null = null;
+/** Bumped on start/stop so a deferred first-run cannot fire after leadership loss. */
+let milestoneGeneration = 0;
 
 const MILESTONE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
@@ -22,14 +25,27 @@ async function runMilestoneCheckCycle(): Promise<void> {
 
 export function startMilestoneScheduler(): void {
   if (milestoneTimer) return;
+  const generation = ++milestoneGeneration;
 
-  setTimeout(() => runMilestoneCheckCycle(), 60 * 1000);
+  initialMilestoneTimer = setTimeout(() => {
+    initialMilestoneTimer = null;
+    if (milestoneGeneration !== generation) return;
+    void runMilestoneCheckCycle();
+  }, 60 * 1000);
 
-  milestoneTimer = setInterval(runMilestoneCheckCycle, MILESTONE_CHECK_INTERVAL_MS);
+  milestoneTimer = setInterval(() => {
+    if (milestoneGeneration !== generation) return;
+    void runMilestoneCheckCycle();
+  }, MILESTONE_CHECK_INTERVAL_MS);
   logger.info('Milestone scheduler started', { intervalMs: MILESTONE_CHECK_INTERVAL_MS });
 }
 
 export function stopMilestoneScheduler(): void {
+  milestoneGeneration += 1;
+  if (initialMilestoneTimer) {
+    clearTimeout(initialMilestoneTimer);
+    initialMilestoneTimer = null;
+  }
   if (milestoneTimer) {
     clearInterval(milestoneTimer);
     milestoneTimer = null;

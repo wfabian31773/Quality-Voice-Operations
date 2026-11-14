@@ -58,6 +58,8 @@ Notes on the move to a once-a-day cron:
 **Stay in the worker** (interval schedulers, plus daily/weekly ones without an exported run-once function):
 `usage-metering`, `metrics-rollup`, `system-metrics`, `usage-guardrails`, `campaigns`, `insights` (mixed 30 min–24 h timers), `call-view-digest`, `csat-expiration`, `workforce`, `gin` (daily; `runGinCycle` not exported), `milestones` (daily; not exported), `docs-feedback-reply-retry`, `support-reply-retry`, `retry-attempts-cleanup`, `connector-auth-alert`, `verified-caller-health` (weekly), `verified-caller-sync`, `trusthub-status` (weekly), `connector-outbox-drain`, `scheduling-drift-alert`, `oauth-token-refresh`, `crm-caller-identity-revalidation`, `route-export-archive-cleanup` (skipped unless object storage is configured), `marketplace-discount-backfill` (daily; only the lock-wrapped tick exists, not exported), `federal-dnc-sync` (weekly).
 
+A few of these delay their first cycle with a one-shot timer after the worker becomes leader (`insights` 60 s, `workforce` 120 s, `milestones` 60 s, `gin` 5 min). Losing leadership or shutting down clears those timers so the cycle cannot run without the lock.
+
 **Shop-tool schedulers: off on the Render worker until go-to-market.** Both run in the worker every 60 s once enabled:
 - `sms-deferred-release`: sends SMS that the `sms.send` chokepoint deferred for quiet hours once the recipient's window opens, and retries transient Twilio failures with backoff. A message whose send attempt already reached Twilio is never sent twice; if its outcome is unknown it is marked `failed` (`SEND_OUTCOME_UNKNOWN`) for the owner to see. Even when enabled, nothing sends unless `SMS_ENABLED` is on **and** the tenant's `sms_messaging_enabled` flag is set.
 - `scheduling-hold-sweeper` (added by PR-08, #106): releases `held` bookings whose hold has expired, so the slot opens again.
@@ -66,9 +68,13 @@ Both stay off on the Render worker (in shadow mode `SCHEDULERS_ENABLED` is unset
 
 ### Worker leader lock
 
-- `server/worker/start.ts` takes `pg_try_advisory_lock` on a **dedicated session connection** (`WORKER_LEADER_DB_URL`), retrying every 10 s while another worker holds it. The leader re-checks its lock connection every 10 s and stops schedulers if it drops.
+- `server/worker/start.ts` takes `pg_try_advisory_lock` on a **dedicated session connection** (`WORKER_LEADER_DB_URL`), retrying every 10 s while another worker holds it. The leader re-checks its lock connection every 10 s (the heartbeat). If that check fails or the connection drops, it **immediately**:
+  - clears the heartbeat so it cannot keep ticking after leadership is gone;
+  - stops every scheduler, including first-run timers that have not fired yet (insights waits 60 s, workforce 120 s, milestones 60 s, GIN 5 min);
+  - fences in-flight ticks (campaign dials) so they do not place more work once the lock is gone.
+- Re-acquiring the lock starts those schedulers **exactly once**. A standby takes over on its next retry (≤ 10 s). Two workers never run the same job at the same time.
 - `WORKER_LEADER_DB_URL` must be a **session-mode** connection: the Supabase **session pooler (port 5432)** or a direct connection. The transaction pooler (port 6543, `PLATFORM_DB_POOL_URL`) cannot hold session advisory locks and is refused.
-- SIGTERM: stop scheduling new ticks → wait for the in-flight tick (observed as "no checked-out DB client", up to 100 s) → release the lock → close the pool → exit. The next worker acquires the lock only after that, so jobs never run twice. Tested against a real Postgres: a standby takes over ~10 s after the leader exits or is killed.
+- SIGTERM: stop scheduling new ticks and cancel deferred first-run timers → wait for the in-flight tick (observed as "no checked-out DB client" and no scheduler reporting `inFlight`, up to 100 s) → release the lock → close the pool → exit. The next worker acquires the lock only after that, so jobs never run twice. Tested against a real Postgres: a standby takes over ~10 s after the leader exits or is killed.
 
 ---
 

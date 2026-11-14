@@ -99,8 +99,9 @@ export interface SchedulerDefinition {
 }
 
 /**
- * Last campaign scheduler started here. Kept after stop() (which only clears
- * the interval) so shutdown can still see a tick that is mid-flight.
+ * Last campaign scheduler started here. Kept after stop() (which clears the
+ * interval and fences the in-flight tick) so shutdown can still see a tick
+ * that is winding down.
  */
 let campaignScheduler: CampaignScheduler | null = null;
 
