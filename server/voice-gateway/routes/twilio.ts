@@ -16,8 +16,6 @@ import {
   resolveContactByCallSid,
   checkCampaignCompletion,
   classifyCallOutcome,
-  addToDnc,
-  isSmsOptOut,
   getCampaign,
   updateContactTypeDisposition,
 } from '../../../platform/campaigns';
@@ -42,7 +40,7 @@ import {
 } from '../../../platform/billing/guardrails';
 import { authorizeHealthcareDeployment } from '../../../platform/compliance/HealthcareDeploymentApprovalService';
 import { applySmsStatusCallback } from '../../../platform/actions/sms/statusCallback';
-import { isSmsOptIn, liftSmsOptOutDnc } from '../../../platform/actions/sms/consent';
+import { defaultSmsInboundDeps, handleInboundSms } from '../../../platform/actions/sms/inbound';
 
 const logger = createLogger('TWILIO_WEBHOOK');
 
@@ -965,130 +963,19 @@ ${campaignParams}
 });
 
 router.post('/twilio/sms', async (req: Request, res: Response) => {
-  const body = (req.body.Body ?? '') as string;
-  const from = (req.body.From ?? '') as string;
-  const to = (req.body.To ?? '') as string;
-  const messageSid = (req.body.MessageSid ?? '') as string;
-
-  logger.info('Inbound SMS received', { from: redactPHI(from), to: redactPHI(to) });
-
-  let twimlResponse = '';
-
   try {
-    const routing = await lookupByPhoneNumber(to);
-    if (!routing) {
-      logger.warn('No routing found for inbound SMS', { to: redactPHI(to) });
-      return res.type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
-    }
-
-    const { tenantId, phoneNumberId } = routing;
-    const SmsService = await import('../../../platform/sms/SmsConversationService');
-
-    const trimmedBody = body.trim().toLowerCase();
-    const isOptOut = isSmsOptOut(body);
-    const isOptIn = !isOptOut && isSmsOptIn(body);
-    const isHelp = trimmedBody === 'help' || trimmedBody === 'info';
-
-    // CSAT response capture — runs BEFORE auto-reply / agent routing so a
-    // numeric reply ("5", "5 thanks!") to a pending survey is recorded as
-    // the rating instead of being treated as a normal inbound message.
-    // Returns silently with no TwiML so no auto-reply is sent on top.
-    try {
-      const csat = await import('../../../platform/analytics/CsatSurveyService');
-      const recorded = await csat.tryRecordSmsCsatResponse(tenantId, from, body);
-      if (recorded.handled) {
-        logger.info('CSAT SMS response recorded', {
-          tenantId,
-          phone: redactPHI(from),
-          csatId: recorded.csat.id,
-        });
-        return res.type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
-      }
-    } catch (csatErr) {
-      // Never let a CSAT-pipeline failure block the regular SMS flow.
-      logger.warn('CSAT SMS handling failed, falling through to normal flow', {
-        tenantId,
-        error: String(csatErr),
-      });
-    }
-
-    if (isOptOut) {
-      await addToDnc(tenantId, from, 'sms', `SMS opt-out: "${body.trim()}"`);
-      await SmsService.logConsent(tenantId, from, 'opt_out', body.trim(), 'inbound_sms', messageSid || undefined);
-      // Also opt out any future CSAT surveys for this number — opt-out is
-      // a global do-not-contact signal, not just an SMS auto-reply concern.
-      try {
-        const csat = await import('../../../platform/analytics/CsatSurveyService');
-        await csat.markCsatOptedOut(tenantId, from);
-      } catch (csatErr) {
-        logger.warn('Failed to mark CSAT opt-out', { tenantId, error: String(csatErr) });
-      }
-      logger.info('SMS opt-out processed — added to DNC', { tenantId, phone: redactPHI(from) });
-    }
-
-    if (isOptIn) {
-      // START/UNSTOP: the latest consent event becomes opt_in, which is what
-      // the sms.send chokepoint reads, and the SMS-sourced DNC entry is lifted.
-      await SmsService.logConsent(tenantId, from, 'opt_in', body.trim(), 'inbound_sms', messageSid || undefined);
-      const lifted = await liftSmsOptOutDnc(tenantId, from);
-      logger.info('SMS opt-in processed', { tenantId, phone: redactPHI(from), dncLifted: lifted });
-    }
-
-    if (isHelp) {
-      await SmsService.logConsent(tenantId, from, 'help_request', body.trim(), 'inbound_sms', messageSid || undefined);
-    }
-
-    const conversation = await SmsService.getOrCreateConversation(tenantId, phoneNumberId, from);
-
-    await SmsService.saveMessage(tenantId, conversation.id, {
-      direction: 'inbound',
-      fromNumber: from,
-      toNumber: to,
-      body,
-      status: 'received',
-      twilioSid: messageSid || undefined,
+    const result = await handleInboundSms(req.body ?? {}, {
+      ...defaultSmsInboundDeps,
+      lookupByTo: async (to) => {
+        const routing = await lookupByPhoneNumber(to);
+        return routing ? { tenantId: routing.tenantId, phoneNumberId: routing.phoneNumberId } : null;
+      },
     });
-
-    await SmsService.logActivity(tenantId, conversation.id, 'message_received', null, null, { from });
-
-    const autoReply = await SmsService.evaluateAutoReplies(tenantId, body, phoneNumberId);
-    if (autoReply && !isOptOut) {
-      twimlResponse = `<Message>${autoReply.replace(/[<>&]/g, c => c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&amp;')}</Message>`;
-
-      await SmsService.saveMessage(tenantId, conversation.id, {
-        direction: 'outbound',
-        fromNumber: to,
-        toNumber: from,
-        body: autoReply,
-        status: 'sent',
-        // FCC treats direct auto-replies to a consumer-initiated inbound
-        // SMS as exempt from the 8am–9pm TCPA quiet-hours window. Pass the
-        // opt-out so the chokepoint guard in saveMessage doesn't reject
-        // legitimate keyword/HELP responses sent at night. (Task #604)
-        allowOutsideQuietHours: true,
-      });
-    }
-
-    if (!conversation.assigneeUserId) {
-      const assignment = await SmsService.evaluateAssignmentRules(tenantId, conversation, body);
-      if (assignment) {
-        await SmsService.updateConversation(tenantId, conversation.id, {
-          assigneeUserId: assignment.userId,
-          assigneeTeam: assignment.team,
-        });
-        await SmsService.logActivity(tenantId, conversation.id, 'assigned', null, null, {
-          team: assignment.team,
-          user: assignment.userId,
-        });
-      }
-    }
+    res.status(result.httpStatus).type('text/xml').send(result.twiml);
   } catch (err) {
-    logger.error('Failed to process inbound SMS', { error: String(err), from: redactPHI(from) });
+    logger.error('Failed to process inbound SMS', { error: String(err) });
+    res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
   }
-
-  res.type('text/xml').send(
-    `<?xml version="1.0" encoding="UTF-8"?><Response>${twimlResponse}</Response>`,
-  );
 });
 
 export default router;

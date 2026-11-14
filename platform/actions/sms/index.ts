@@ -26,7 +26,24 @@ export {
   type UserSmsRequest,
 } from './send';
 export { applySmsStatusCallback, type SmsStatusCallback } from './statusCallback';
-export { isSmsOptIn, liftSmsOptOutDnc } from './consent';
+export {
+  isLikelySmsOptOut,
+  isSmsHelp,
+  isSmsOptIn,
+  liftSmsOptOutDnc,
+} from './consent';
+export {
+  EMPTY_INBOUND_TWIML,
+  SMS_MAX_INBOUND_BODY_CHARS,
+  defaultSmsInboundDeps,
+  handleInboundSms,
+  inboundSmsTwiml,
+  parseInboundSmsPayload,
+  postgresSmsInboundStore,
+  type InboundSmsResult,
+  type ParsedInboundSms,
+  type SmsInboundDeps,
+} from './inbound';
 export {
   SMS_MAX_BODY_CHARS,
   getSmsTemplate,
