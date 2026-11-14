@@ -284,9 +284,8 @@ describe('POST /book-demo/calendly-webhook — signature verification', () => {
       .update(Buffer.from(`${t}.${body}`, 'utf8'))
       .digest('hex');
     const fakeOld = '0'.repeat(goodHmac.length);
-    // The verifier keeps the first v1 it parses (later entries are
-    // ignored). Put the live key first so a rotation leftover after it
-    // does not 401 a valid delivery.
+    // Calendly may send more than one v1 during signing-key rotation.
+    // Either slot matching the live secret must authenticate the delivery.
     const r = await request(app)
       .post(WEBHOOK_PATH)
       .set('Content-Type', 'application/json')
@@ -297,11 +296,7 @@ describe('POST /book-demo/calendly-webhook — signature verification', () => {
     expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
   });
 
-  // KNOWN GAP: server/admin-api/routes/contact.ts verifies only the first v1,
-  // so a valid signature after a stale one is rejected. Once fixed, flip this
-  // to expect 200 with { ok: true, leadId: 7, duplicate: false } and one
-  // attachBookingToLeadById call.
-  it('rejects with 401 a multi-v1 signature header when an invalid v1 precedes the valid one', async () => {
+  it('accepts a multi-v1 signature header when a later v1 matches (first v1 wrong)', async () => {
     const { app, mocks } = await buildApp({
       findLeadById: vi.fn(async (id: number) => ({
         id,
@@ -323,6 +318,20 @@ describe('POST /book-demo/calendly-webhook — signature verification', () => {
       .post(WEBHOOK_PATH)
       .set('Content-Type', 'application/json')
       .set('Calendly-Webhook-Signature', `t=${t},v1=${fakeOld},v1=${goodHmac}`)
+      .send(body);
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, leadId: 7, duplicate: false });
+    expect(mocks.attachBookingToLeadById).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects with 401 when every v1 in a multi-v1 header is wrong', async () => {
+    const { app, mocks } = await buildApp();
+    const body = buildInviteeCreatedBody();
+    const t = Math.floor(Date.now() / 1000);
+    const r = await request(app)
+      .post(WEBHOOK_PATH)
+      .set('Content-Type', 'application/json')
+      .set('Calendly-Webhook-Signature', `t=${t},v1=${'0'.repeat(64)},v1=${'a'.repeat(64)}`)
       .send(body);
     expect(r.status).toBe(401);
     expect(r.body).toEqual({ error: 'Invalid signature' });
