@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
+import type { ZodType } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import { requireMiniSystemWrite } from '../middleware/rbac';
 import { requireRole } from '../middleware/rbac';
@@ -19,7 +20,23 @@ import {
   SMS_CANNED_RESPONSE_TOKENS,
   findUnknownSmsCannedResponseTokens,
 } from '../../../shared/sms/cannedResponseTokens';
-import { SMS_MAX_BODY_CHARS, sendStoredSms, sendUserSms } from '../../../platform/actions/sms';
+import { sendStoredSms, sendUserSms } from '../../../platform/actions/sms';
+import {
+  addNoteSchema,
+  bulkUpdateSchema,
+  createAssignmentRuleSchema,
+  createAutoReplyRuleSchema,
+  createTemplateSchema,
+  idempotencyKeyHeaderSchema,
+  parseWrite,
+  sendMessageSchema,
+  smsInboxReplyIdempotencyKey,
+  substituteTemplateSchema,
+  updateAutoReplyRuleSchema,
+  updateTemplateSchema,
+  updateThreadSchema,
+  zodFieldsError,
+} from './smsInboxSchemas';
 
 const router = Router();
 const logger = createLogger('ADMIN_SMS_INBOX');
@@ -31,7 +48,10 @@ function smsSendFailureResponse(error: { code: string; message: string }): {
 } {
   switch (error.code) {
     case 'RECIPIENT_OPTED_OUT':
-      return { status: 403, payload: { error: 'This number has opted out of SMS', reason: 'recipient_opted_out' } };
+      return {
+        status: 403,
+        payload: { error: error.message, reason: 'recipient_opted_out', code: error.code },
+      };
     case 'MESSAGING_NOT_ENABLED':
       return { status: 503, payload: { error: 'SMS service not configured', reason: 'messaging_not_enabled' } };
     case 'RATE_LIMITED':
@@ -39,10 +59,85 @@ function smsSendFailureResponse(error: { code: string; message: string }): {
     case 'INVALID_NUMBER':
     case 'VALIDATION_FAILED':
       return { status: 400, payload: { error: error.message } };
+    case 'IDEMPOTENCY_KEY_REUSED':
+      return { status: 409, payload: { error: error.message, reason: 'idempotency_key_reused', code: error.code } };
     case 'FORBIDDEN':
       return { status: 403, payload: { error: error.message } };
     default:
       return { status: 500, payload: { error: `Failed to send message: ${error.message}` } };
+  }
+}
+
+function parseOr400<T>(schema: ZodType<T>, body: unknown, res: Response): T | undefined {
+  const parsed = parseWrite(schema, body);
+  if (!parsed.ok) {
+    res.status(400).json({ error: parsed.error, fields: parsed.fields });
+    return undefined;
+  }
+  return parsed.data;
+}
+
+function unknownMergeTokenError(body: string): {
+  error: string;
+  fields: Record<string, string>;
+  unknownTokens: string[];
+  knownTokens: readonly string[];
+} | null {
+  const unknownTokens = findUnknownSmsCannedResponseTokens(body);
+  if (unknownTokens.length === 0) return null;
+  const error = `Unknown merge token${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens
+    .map((t) => `{{${t}}}`)
+    .join(', ')}. Supported tokens: ${SMS_CANNED_RESPONSE_TOKENS.map((t) => `{{${t}}}`).join(', ')}.`;
+  return { error, fields: { body: error }, unknownTokens, knownTokens: SMS_CANNED_RESPONSE_TOKENS };
+}
+
+function readIdempotencyHeader(req: Request): string | undefined {
+  const raw = req.headers['idempotency-key'];
+  if (raw === undefined) return undefined;
+  return Array.isArray(raw) ? raw[0] : raw;
+}
+
+async function logThreadWriteActivity(
+  tenantId: string,
+  conversationId: string,
+  userId: string,
+  actorName: string,
+  before: {
+    status: SmsService.ConversationStatus;
+    assigneeUserId: string | null;
+    assigneeTeam?: string | null;
+  },
+  updates: {
+    status?: SmsService.ConversationStatus;
+    assigneeUserId?: string | null;
+    assigneeTeam?: string | null;
+    tags?: string[];
+    bulk?: boolean;
+  },
+): Promise<void> {
+  const details = updates.bulk ? { bulk: true } : {};
+  if (updates.status && (updates.status !== before.status || updates.bulk)) {
+    await SmsService.logActivity(tenantId, conversationId, 'status_changed', userId, actorName, {
+      ...details,
+      from: before.status,
+      to: updates.status,
+    });
+  }
+  const assigneeChanged =
+    (updates.assigneeUserId !== undefined && updates.assigneeUserId !== before.assigneeUserId) ||
+    (updates.assigneeTeam !== undefined && updates.assigneeTeam !== before.assigneeTeam);
+  if (assigneeChanged || (updates.bulk && (updates.assigneeUserId !== undefined || updates.assigneeTeam !== undefined))) {
+    await SmsService.logActivity(tenantId, conversationId, 'assigned', userId, actorName, {
+      ...details,
+      to: updates.assigneeUserId,
+      team: updates.assigneeTeam,
+    });
+  }
+  if (updates.tags !== undefined) {
+    await SmsService.logActivity(tenantId, conversationId, 'tagged', userId, actorName, {
+      ...details,
+      tags: updates.tags,
+    });
   }
 }
 
@@ -118,25 +213,8 @@ const getConversationHandler: RequestHandler = async (req, res) => {
 const updateConversationHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
   const { id } = req.params;
-  const updates = req.body as {
-    status?: SmsService.ConversationStatus;
-    assigneeUserId?: string | null;
-    assigneeTeam?: string | null;
-    priority?: SmsService.ConversationPriority;
-    pinned?: boolean;
-    followUp?: boolean;
-    followUpAt?: string;
-    contactName?: string;
-    contactEmail?: string;
-    contactLocation?: string;
-    tags?: string[];
-  };
-
-  const VALID_STATUSES = ['open', 'pending', 'closed', 'escalated', 'archived'];
-  const VALID_PRIORITIES = ['normal', 'high', 'urgent'];
-  if (updates.status && !VALID_STATUSES.includes(updates.status)) return res.status(400).json({ error: `Invalid status` });
-  if (updates.priority && !VALID_PRIORITIES.includes(updates.priority)) return res.status(400).json({ error: `Invalid priority` });
-  if (updates.followUpAt && isNaN(new Date(updates.followUpAt).getTime())) return res.status(400).json({ error: 'Invalid followUpAt date' });
+  const updates = parseOr400(updateThreadSchema, req.body, res);
+  if (!updates) return;
 
   try {
     const before = await SmsService.getConversation(tenantId, id);
@@ -146,13 +224,9 @@ const updateConversationHandler: RequestHandler = async (req, res) => {
       ...updates,
       followUpAt: updates.followUpAt ? new Date(updates.followUpAt) : undefined,
     });
+    if (!conv) return res.status(404).json({ error: 'Conversation not found' });
 
-    if (updates.status && updates.status !== before.status) {
-      await SmsService.logActivity(tenantId, id, 'status_changed', userId, req.user!.email, { from: before.status, to: updates.status });
-    }
-    if (updates.assigneeUserId !== undefined && updates.assigneeUserId !== before.assigneeUserId) {
-      await SmsService.logActivity(tenantId, id, 'assigned', userId, req.user!.email, { to: updates.assigneeUserId });
-    }
+    await logThreadWriteActivity(tenantId, id, userId, req.user!.email, before, updates);
 
     await writeAuditLog({
       tenantId,
@@ -190,11 +264,18 @@ const getMessagesHandler: RequestHandler = async (req, res) => {
 const sendMessageHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
   const { id } = req.params;
-  const { body, scheduledAt } = req.body as { body?: string; scheduledAt?: string };
+  const payload = parseOr400(sendMessageSchema, req.body, res);
+  if (!payload) return;
+  const { body, scheduledAt } = payload;
 
-  if (!body?.trim()) return res.status(400).json({ error: 'body is required' });
-  if (body.length > SMS_MAX_BODY_CHARS) {
-    return res.status(400).json({ error: `body must be at most ${SMS_MAX_BODY_CHARS} characters` });
+  const rawIdempotencyKey = readIdempotencyHeader(req);
+  let idempotencyKey: string | undefined;
+  if (rawIdempotencyKey !== undefined) {
+    const parsedKey = idempotencyKeyHeaderSchema.safeParse(rawIdempotencyKey);
+    if (!parsedKey.success) {
+      return res.status(400).json(zodFieldsError(parsedKey.error, 'idempotency-key'));
+    }
+    idempotencyKey = smsInboxReplyIdempotencyKey(tenantId, id, parsedKey.data);
   }
 
   try {
@@ -266,6 +347,7 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
         from: fromNumber,
         body,
         purpose: 'conversational',
+        ...(idempotencyKey ? { idempotencyKey } : {}),
       });
       if (!sent.ok) {
         const { status, payload } = smsSendFailureResponse(sent.error);
@@ -335,10 +417,12 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
 const addNoteHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
   const { id } = req.params;
-  const { body } = req.body as { body?: string };
-  if (!body?.trim()) return res.status(400).json({ error: 'body is required' });
+  const payload = parseOr400(addNoteSchema, req.body, res);
+  if (!payload) return;
   try {
-    const note = await SmsService.addInternalNote(tenantId, id, userId, req.user!.email, body);
+    const conv = await SmsService.getConversation(tenantId, id);
+    if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+    const note = await SmsService.addInternalNote(tenantId, id, userId, req.user!.email, payload.body);
     await SmsService.logActivity(tenantId, id, 'note_added', userId, req.user!.email);
     return res.status(201).json({ note });
   } catch (err) {
@@ -398,17 +482,30 @@ const deferredMessagesHandler: RequestHandler = async (req, res) => {
 
 const bulkUpdateHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
-  const { conversationIds, status, assigneeUserId, tags } = req.body as {
-    conversationIds?: string[];
-    status?: SmsService.ConversationStatus;
-    assigneeUserId?: string | null;
-    tags?: string[];
-  };
-  if (!Array.isArray(conversationIds) || conversationIds.length === 0) {
-    return res.status(400).json({ error: 'conversationIds array is required' });
-  }
+  const payload = parseOr400(bulkUpdateSchema, req.body, res);
+  if (!payload) return;
+  const { conversationIds, status, assigneeUserId, tags } = payload;
   try {
-    const updated = await SmsService.bulkUpdateConversations(tenantId, conversationIds, { status, assigneeUserId, tags });
+    const own: SmsService.SmsConversation[] = [];
+    for (const conversationId of conversationIds) {
+      const conv = await SmsService.getConversation(tenantId, conversationId);
+      if (conv) own.push(conv);
+    }
+    if (own.length === 0) {
+      return res.json({ updated: 0 });
+    }
+
+    const ownIds = own.map((c) => c.id);
+    const updated = await SmsService.bulkUpdateConversations(tenantId, ownIds, { status, assigneeUserId, tags });
+
+    for (const conv of own) {
+      await logThreadWriteActivity(tenantId, conv.id, userId, req.user!.email, conv, {
+        status,
+        assigneeUserId,
+        tags,
+        bulk: true,
+      });
+    }
 
     await writeAuditLog({
       tenantId,
@@ -416,7 +513,7 @@ const bulkUpdateHandler: RequestHandler = async (req, res) => {
       actorRole: req.user!.role,
       action: 'sms_conversation.bulk_updated',
       resourceType: 'sms_conversation',
-      afterState: { count: updated, status, assigneeUserId },
+      afterState: { count: updated, status, assigneeUserId, conversationIds: ownIds },
       ipAddress: extractIp(req),
       userAgent: req.headers['user-agent'],
     });
@@ -439,25 +536,15 @@ const listCannedResponsesHandler: RequestHandler = async (req, res) => {
 
 const createCannedResponseHandler: RequestHandler = async (req, res) => {
   const { tenantId, userId } = req.user!;
-  const data = req.body as { title?: string; body?: string; category?: string; variables?: string[]; shortcut?: string; isGlobal?: boolean };
-  if (!data.title || !data.body) return res.status(400).json({ error: 'title and body are required' });
+  const data = parseOr400(createTemplateSchema, req.body, res);
+  if (!data) return;
   // Reject typos like {{custmer_name}} server-side too so the inline
   // editor warning can't be bypassed via direct API calls — see task
   // #806 and shared/sms/cannedResponseTokens.ts.
-  const unknownTokens = findUnknownSmsCannedResponseTokens(data.body);
-  if (unknownTokens.length > 0) {
-    return res.status(400).json({
-      error: `Unknown merge token${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens
-        .map((t) => `{{${t}}}`)
-        .join(', ')}. Supported tokens: ${SMS_CANNED_RESPONSE_TOKENS
-        .map((t) => `{{${t}}}`)
-        .join(', ')}.`,
-      unknownTokens,
-      knownTokens: SMS_CANNED_RESPONSE_TOKENS,
-    });
-  }
+  const tokenError = unknownMergeTokenError(data.body);
+  if (tokenError) return res.status(400).json(tokenError);
   try {
-    const response = await SmsService.createCannedResponse(tenantId, { ...data, title: data.title, body: data.body, createdBy: userId });
+    const response = await SmsService.createCannedResponse(tenantId, { ...data, createdBy: userId });
     return res.status(201).json({ response });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to create template' });
@@ -467,23 +554,14 @@ const createCannedResponseHandler: RequestHandler = async (req, res) => {
 const updateCannedResponseHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
-  const { body } = req.body as { body?: string };
-  if (body !== undefined) {
-    const unknownTokens = findUnknownSmsCannedResponseTokens(body);
-    if (unknownTokens.length > 0) {
-      return res.status(400).json({
-        error: `Unknown merge token${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens
-          .map((t) => `{{${t}}}`)
-          .join(', ')}. Supported tokens: ${SMS_CANNED_RESPONSE_TOKENS
-          .map((t) => `{{${t}}}`)
-          .join(', ')}.`,
-        unknownTokens,
-        knownTokens: SMS_CANNED_RESPONSE_TOKENS,
-      });
-    }
+  const data = parseOr400(updateTemplateSchema, req.body, res);
+  if (!data) return;
+  if (data.body !== undefined) {
+    const tokenError = unknownMergeTokenError(data.body);
+    if (tokenError) return res.status(400).json(tokenError);
   }
   try {
-    const response = await SmsService.updateCannedResponse(tenantId, id, req.body);
+    const response = await SmsService.updateCannedResponse(tenantId, id, data);
     if (!response) return res.status(404).json({ error: 'Template not found' });
     return res.json({ response });
   } catch (err) {
@@ -504,9 +582,9 @@ const deleteCannedResponseHandler: RequestHandler = async (req, res) => {
 };
 
 const substituteHandler: RequestHandler = async (req, res) => {
-  const { template, variables } = req.body as { template?: string; variables?: Record<string, string> };
-  if (!template) return res.status(400).json({ error: 'template is required' });
-  const result = await SmsService.substituteVariables(template, variables ?? {});
+  const payload = parseOr400(substituteTemplateSchema, req.body, res);
+  if (!payload) return;
+  const result = await SmsService.substituteVariables(payload.template, payload.variables ?? {});
   return res.json({ result });
 };
 
@@ -522,22 +600,16 @@ const listAutoReplyRulesHandler: RequestHandler = async (req, res) => {
 
 const createAutoReplyRuleHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const data = req.body;
-  if (!data.name || !data.replyBody) return res.status(400).json({ error: 'name and replyBody are required' });
-  const unknownTokens = findUnknownSmsCannedResponseTokens(data.replyBody);
-  if (unknownTokens.length > 0) {
-    return res.status(400).json({
-      error: `Unknown merge token${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens
-        .map((t) => `{{${t}}}`)
-        .join(', ')}. Supported tokens: ${SMS_CANNED_RESPONSE_TOKENS
-        .map((t) => `{{${t}}}`)
-        .join(', ')}.`,
-      unknownTokens,
-      knownTokens: SMS_CANNED_RESPONSE_TOKENS,
-    });
-  }
+  const data = parseOr400(createAutoReplyRuleSchema, req.body, res);
+  if (!data) return;
+  const tokenError = unknownMergeTokenError(data.replyBody);
+  if (tokenError) return res.status(400).json(tokenError);
   try {
-    const rule = await SmsService.createAutoReplyRule(tenantId, data);
+    const rule = await SmsService.createAutoReplyRule(tenantId, {
+      ...data,
+      isBusinessHours: data.isBusinessHours ?? undefined,
+      phoneNumberId: data.phoneNumberId ?? undefined,
+    });
     return res.status(201).json({ rule });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to create auto-reply rule' });
@@ -547,23 +619,14 @@ const createAutoReplyRuleHandler: RequestHandler = async (req, res) => {
 const updateAutoReplyRuleHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
   const { id } = req.params;
-  const { replyBody } = req.body as { replyBody?: string };
-  if (replyBody !== undefined) {
-    const unknownTokens = findUnknownSmsCannedResponseTokens(replyBody);
-    if (unknownTokens.length > 0) {
-      return res.status(400).json({
-        error: `Unknown merge token${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens
-          .map((t) => `{{${t}}}`)
-          .join(', ')}. Supported tokens: ${SMS_CANNED_RESPONSE_TOKENS
-          .map((t) => `{{${t}}}`)
-          .join(', ')}.`,
-        unknownTokens,
-        knownTokens: SMS_CANNED_RESPONSE_TOKENS,
-      });
-    }
+  const data = parseOr400(updateAutoReplyRuleSchema, req.body, res);
+  if (!data) return;
+  if (data.replyBody !== undefined) {
+    const tokenError = unknownMergeTokenError(data.replyBody);
+    if (tokenError) return res.status(400).json(tokenError);
   }
   try {
-    const rule = await SmsService.updateAutoReplyRule(tenantId, id, req.body);
+    const rule = await SmsService.updateAutoReplyRule(tenantId, id, data);
     if (!rule) return res.status(404).json({ error: 'Rule not found' });
     return res.json({ rule });
   } catch (err) {
@@ -595,12 +658,14 @@ const listAssignmentRulesHandler: RequestHandler = async (req, res) => {
 
 const createAssignmentRuleHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const data = req.body;
-  if (!data.name || !data.matchField || !data.matchValue) {
-    return res.status(400).json({ error: 'name, matchField, and matchValue are required' });
-  }
+  const data = parseOr400(createAssignmentRuleSchema, req.body, res);
+  if (!data) return;
   try {
-    const rule = await SmsService.createAssignmentRule(tenantId, data);
+    const rule = await SmsService.createAssignmentRule(tenantId, {
+      ...data,
+      ruleType: data.ruleType ?? 'auto',
+      assignToUserId: data.assignToUserId ?? undefined,
+    });
     return res.status(201).json({ rule });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to create assignment rule' });
@@ -894,6 +959,7 @@ router.get('/sms-inbox/conversations', requireAuth, listPhoneLinesHandler);
 router.get('/sms-inbox/threads', requireAuth, listConversationsHandler);
 router.get('/sms-inbox/threads/:id', requireAuth, getConversationHandler);
 router.patch('/sms-inbox/threads/:id', requireAuth, requireMiniSystemWrite, updateConversationHandler);
+router.put('/sms-inbox/threads/:id', requireAuth, requireMiniSystemWrite, updateConversationHandler);
 router.get('/sms-inbox/threads/:id/messages', requireAuth, getMessagesHandler);
 router.post('/sms-inbox/threads/:id/messages', requireAuth, requireMiniSystemWrite, sendMessageHandler);
 router.post('/sms-inbox/threads/:id/notes', requireAuth, requireMiniSystemWrite, addNoteHandler);
