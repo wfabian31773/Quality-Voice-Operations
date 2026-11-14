@@ -38,8 +38,9 @@ Owner-side extras (not numbered in §1.6): `two concurrent cancels: one wins and
 
 ## Still open
 
-- Admin create/confirm does not expire stale holds before inserting (the agent prepare path does via `expireStaleHolds`). An expired-but-not-yet-swept hold still occupies the slot under the 122 exclusion constraint and returns generic `slot_unavailable` rather than `heldBy: 'phone_call'`.
+- Admin create/confirm does not expire stale holds before inserting (the agent prepare path does via `expireStaleHolds`). An expired-but-unswept hold still occupies the slot under the 122 exclusion constraint and returns generic `slot_unavailable` rather than `heldBy: 'phone_call'`.
 - Owner routes still implement booking writes in the HTTP handler rather than `runAction()` (ADR-001). Extracting them onto `platform/actions/scheduling` is out of this slice.
 - Idempotency is on create only, not on PUT/transition/delete.
+- Idempotency replay compares the retry body to the **current** booking row. A same-key retry of the original create after staff has edited or transitioned that row can return `409 IDEMPOTENCY_KEY_REUSED` instead of the existing booking. Storing an immutable original-payload fingerprint would need a new column or `action_idempotency` (a migration), so it is out of this slice. Normal double-submit (same payload, no intervening edit) still replays.
 - §1.6 items 2–8, 11–13, and 15 remain agent-protocol scenarios; the owner UI does not speak them.
 - Hold conflict responses do not yet include `alternatives` (agent CONFLICT does).
