@@ -103,7 +103,7 @@ const OPTIONAL_VARS: EnvVar[] = [
   { name: 'OPENAI_API_KEY', required: 'development', purpose: 'Optional OpenAI key for non-voice utilities such as embeddings and TTS preview. Live calls use XAI_API_KEY.' },
   { name: 'TURNSTILE_SITE_KEY', required: 'development', purpose: 'Cloudflare Turnstile site key served to the signup form at runtime via GET /auth/signup-config. Prefer this over VITE_TURNSTILE_SITE_KEY so the widget can render without a frontend rebuild. The form fails closed when captcha is required and no site key is available.' },
   { name: 'VITE_TURNSTILE_SITE_KEY', required: 'development', purpose: 'Build-time fallback Cloudflare Turnstile site key inlined into the signup bundle. Used when TURNSTILE_SITE_KEY is unset.' },
-  { name: 'TURNSTILE_ALLOWED_HOSTNAMES', required: 'development', purpose: 'Optional comma-separated hostnames accepted from Cloudflare Turnstile siteverify after a successful token check (signup and book-demo). When set, a token whose hostname is not on this list is rejected with the same user-facing CAPTCHA error. When unset, hostname is not checked (local/Replit) and a one-time warning is logged. Set on Render qvo-api, e.g. api.qualityvoiceoperations.com,qualityvoiceoperations.com,voice.qualityvoiceoperations.com.' },
+  { name: 'TURNSTILE_ALLOWED_HOSTNAMES', required: 'development', purpose: 'Comma-separated hostnames accepted from Cloudflare Turnstile siteverify after a successful token check (signup and book-demo). Required on Render qvo-api. When unset locally or on Replit, hostname is not checked and a one-time warning is logged. Example: api.qualityvoiceoperations.com,qualityvoiceoperations.com,voice.qualityvoiceoperations.com.' },
   { name: 'ENCRYPTION_MASTER_KEY', required: 'development', purpose: 'Dedicated 32+ byte master key for platform-admin TOTP secrets and other encrypted application settings; falls back to CONNECTOR_ENCRYPTION_KEY when unset' },
   { name: 'CALL_EVENTS_PARTITION_PRUNING_ENABLED', required: 'development', purpose: 'Explicit destructive-retention opt-in; only set to true after the call-events retention policy is approved' },
   { name: 'ADMIN_API_PORT', required: 'development', purpose: 'Admin API listen port (default: 3002)' },
@@ -420,6 +420,12 @@ export function validateEnvironment(options?: { exitOnFailure?: boolean; role?: 
       } else {
         console.log(`  PASS  ${name}`);
       }
+    }
+    if (roleNeeds('api') && !process.env.TURNSTILE_ALLOWED_HOSTNAMES?.trim()) {
+      console.log(
+        '  FAIL  TURNSTILE_ALLOWED_HOSTNAMES — required on Render so signup CAPTCHA tokens from other sites are rejected',
+      );
+      if (!missing.includes('TURNSTILE_ALLOWED_HOSTNAMES')) missing.push('TURNSTILE_ALLOWED_HOSTNAMES');
     }
     for (const name of REPLIT_ONLY_ENV_NAMES) {
       if (process.env[name] !== undefined) {

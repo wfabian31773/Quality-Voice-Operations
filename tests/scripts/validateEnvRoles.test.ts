@@ -142,6 +142,23 @@ describe('Render guards', () => {
     expect(output()).toContain('FAIL  APP_URL — required on Render (no REPLIT_DEV_DOMAIN fallback)');
   });
 
+  it('RENDER=true requires TURNSTILE_ALLOWED_HOSTNAMES on the api role', async () => {
+    setEnv({ ...API, RENDER: 'true', APP_URL: 'https://api.example.com', VOICE_GATEWAY_BASE_URL: 'https://voice.example.com' });
+    delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+    const { validateEnvironment } = await load();
+    const r = validateEnvironment({ role: 'api' });
+    expect(r.passed).toBe(false);
+    expect(r.missing).toContain('TURNSTILE_ALLOWED_HOSTNAMES');
+  });
+
+  it('RENDER=true does not require TURNSTILE_ALLOWED_HOSTNAMES on voice', async () => {
+    setEnv({ ...VOICE, RENDER: 'true', APP_URL: 'https://api.example.com', VOICE_GATEWAY_BASE_URL: 'https://voice.example.com' });
+    const { validateEnvironment } = await load();
+    const r = validateEnvironment({ role: 'voice' });
+    expect(r.missing).not.toContain('TURNSTILE_ALLOWED_HOSTNAMES');
+    expect(r.passed).toBe(true);
+  });
+
   it('RENDER=true requires VOICE_GATEWAY_BASE_URL even in development', async () => {
     setEnv({ RENDER: 'true', APP_ENV: 'development', APP_URL: 'https://api.example.com', DATABASE_URL: 'postgres://x' });
     const { validateEnvironment } = await load();

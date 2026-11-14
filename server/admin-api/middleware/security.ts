@@ -19,6 +19,7 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import type { CookieOptions } from 'express';
 import type { CorsOptions } from 'cors';
+import { isRenderRuntime } from '../../../platform/runtime/processRole';
 
 const PRODUCTION_LIKE_ENVS = new Set(['production', 'staging']);
 
@@ -247,6 +248,14 @@ export function assertProductionSecrets(): void {
   if (turnstileSecret && CLOUDFLARE_TURNSTILE_DUMMY_SECRETS.has(turnstileSecret)) {
     errors.push(
       'TURNSTILE_SECRET_KEY is a Cloudflare test/dummy secret; set a real Turnstile secret in production',
+    );
+  }
+
+  // Render qvo-api already has this list. Replit/local keep the unset bypass
+  // (one-time warning in verifyTurnstile) so signup still works there.
+  if (isRenderRuntime() && !(process.env.TURNSTILE_ALLOWED_HOSTNAMES ?? '').trim()) {
+    errors.push(
+      'TURNSTILE_ALLOWED_HOSTNAMES is required on Render so signup CAPTCHA tokens from other sites are rejected',
     );
   }
 

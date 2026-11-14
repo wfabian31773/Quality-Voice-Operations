@@ -33,10 +33,12 @@ describe('verifyTurnstile', () => {
   const originalFetch = globalThis.fetch;
   const originalSecret = process.env.TURNSTILE_SECRET_KEY;
   const originalHosts = process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+  const originalRender = process.env.RENDER;
 
   beforeEach(() => {
     process.env.TURNSTILE_SECRET_KEY = 'test-turnstile-secret';
     delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
+    delete process.env.RENDER;
     resetTurnstileHostnameAllowListWarning();
     log.warn.mockReset();
     log.error.mockReset();
@@ -48,6 +50,8 @@ describe('verifyTurnstile', () => {
     else process.env.TURNSTILE_SECRET_KEY = originalSecret;
     if (originalHosts === undefined) delete process.env.TURNSTILE_ALLOWED_HOSTNAMES;
     else process.env.TURNSTILE_ALLOWED_HOSTNAMES = originalHosts;
+    if (originalRender === undefined) delete process.env.RENDER;
+    else process.env.RENDER = originalRender;
   });
 
   function mockSiteverify(body: Record<string, unknown>): void {
@@ -140,6 +144,27 @@ describe('verifyTurnstile', () => {
       String(message).includes('TURNSTILE_ALLOWED_HOSTNAMES is unset'),
     );
     expect(allowListWarnings).toHaveLength(1);
+  });
+
+  it('rejects any hostname on Render when TURNSTILE_ALLOWED_HOSTNAMES is unset', async () => {
+    process.env.RENDER = 'true';
+    mockSiteverify({
+      success: true,
+      hostname: 'qualityvoiceoperations.com',
+      action: TURNSTILE_ACTIONS.signup,
+    });
+
+    const result = await verifyTurnstile(okOpts);
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      reason: 'hostname_mismatch',
+      error: TURNSTILE_CAPTCHA_FAILED_ERROR,
+    });
+    expect(log.warn).toHaveBeenCalledWith('Turnstile verification rejected', expect.objectContaining({
+      reason: 'hostname_mismatch',
+      hostnameAllowListUnset: true,
+    }));
   });
 
   it('still rejects a wrong action when the hostname allow-list is unset', async () => {

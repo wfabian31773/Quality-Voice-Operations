@@ -6,6 +6,7 @@ import {
 
 const ENV_KEYS = [
   'APP_ENV', 'NODE_ENV', 'ALLOWED_ORIGINS', 'ADMIN_JWT_SECRET', 'TURNSTILE_SECRET_KEY',
+  'TURNSTILE_ALLOWED_HOSTNAMES', 'RENDER',
   'CONNECTOR_EMAIL_WEBHOOK_SECRET', 'CONNECTOR_ENCRYPTION_KEY',
   'BOOK_DEMO_SCHEDULER_PROVIDER', 'VITE_BOOK_DEMO_SCHEDULER_PROVIDER', 'CALENDLY_WEBHOOK_SECRET',
 ];
@@ -150,5 +151,24 @@ describe('assertProductionSecrets', () => {
     process.env.TURNSTILE_SECRET_KEY = ' 1x0000000000000000000000000000000AA ';
     process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 's';
     expect(() => assertProductionSecrets()).toThrow(/Cloudflare test\/dummy secret/);
+  });
+  it('does not require TURNSTILE_ALLOWED_HOSTNAMES off Render (Replit/local bypass)', () => {
+    process.env.APP_ENV = 'production';
+    process.env.ADMIN_JWT_SECRET = 's';
+    process.env.ALLOWED_ORIGINS = 'https://a.com';
+    process.env.TURNSTILE_SECRET_KEY = 's';
+    process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 's';
+    expect(() => assertProductionSecrets()).not.toThrow();
+  });
+  it('requires TURNSTILE_ALLOWED_HOSTNAMES on Render so the hostname check cannot be skipped', () => {
+    process.env.APP_ENV = 'production';
+    process.env.RENDER = 'true';
+    process.env.ADMIN_JWT_SECRET = 's';
+    process.env.ALLOWED_ORIGINS = 'https://a.com';
+    process.env.TURNSTILE_SECRET_KEY = 's';
+    process.env.CONNECTOR_EMAIL_WEBHOOK_SECRET = 's';
+    expect(() => assertProductionSecrets()).toThrow(/TURNSTILE_ALLOWED_HOSTNAMES/);
+    process.env.TURNSTILE_ALLOWED_HOSTNAMES = 'api.qualityvoiceoperations.com';
+    expect(() => assertProductionSecrets()).not.toThrow();
   });
 });

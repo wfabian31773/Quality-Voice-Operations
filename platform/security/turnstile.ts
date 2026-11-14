@@ -1,4 +1,5 @@
 import { createLogger } from '../core/logger';
+import { isRenderRuntime } from '../runtime/processRole';
 
 const logger = createLogger('TURNSTILE');
 
@@ -59,8 +60,8 @@ export function normalizeTurnstileHostname(hostname: string): string {
 
 /**
  * Parse `TURNSTILE_ALLOWED_HOSTNAMES`. Empty / unset means "do not enforce
- * a hostname allow-list" (local and Replit). A set value replaces any
- * previous list entirely.
+ * a hostname allow-list" on local and Replit. On Render, an empty list is
+ * treated as a missing control (fail closed). A set value is the full list.
  */
 export function parseTurnstileAllowedHostnames(raw: string | undefined): string[] {
   if (raw === undefined || raw.trim() === '') return [];
@@ -115,6 +116,7 @@ function reject(
   reason: TurnstileFailureReason,
   expectedAction: string,
   data?: SiteverifyResponse,
+  extra?: Record<string, unknown>,
 ): TurnstileVerifyFailure {
   logger.warn('Turnstile verification rejected', {
     reason,
@@ -122,6 +124,7 @@ function reject(
     hostname: data?.hostname,
     action: data?.action,
     errorCodes: data?.['error-codes'],
+    ...extra,
   });
   return fail(reason);
 }
@@ -130,8 +133,10 @@ function reject(
  * Verifies a Cloudflare Turnstile token against siteverify, then checks
  * that the returned `action` matches the form that collected the token.
  * When `TURNSTILE_ALLOWED_HOSTNAMES` is set, also requires `hostname` to
- * be on that comma-separated list. When it is unset, hostname is not
- * checked and a one-time warning is logged (local / Replit).
+ * be on that comma-separated list. When it is unset on local/Replit,
+ * hostname is not checked and a one-time warning is logged. On Render an
+ * unset list is rejected (fail closed) so a missing env var cannot accept
+ * tokens issued for other sites.
  *
  * When `TURNSTILE_SECRET_KEY` is unset, verification is skipped (local/dev
  * bypass). Production startup requires the secret, so this cannot ship
@@ -166,6 +171,13 @@ export async function verifyTurnstile(opts: {
 
     const allowed = allowedTurnstileHostnames();
     if (allowed.length === 0) {
+      // Render already has this env on qvo-api. Skipping the check there
+      // would silently accept tokens from any hostname.
+      if (isRenderRuntime()) {
+        return reject('hostname_mismatch', opts.expectedAction, data, {
+          hostnameAllowListUnset: true,
+        });
+      }
       warnIfHostnameAllowListUnset();
     } else if (!isAllowedTurnstileHostname(data.hostname, allowed)) {
       return reject('hostname_mismatch', opts.expectedAction, data);
