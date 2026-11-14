@@ -179,6 +179,8 @@ export type TicketSummary = z.infer<typeof ticketSummary>;
 export const listInput = z.object({
   status: z.enum(['open', 'overdue', 'all']).optional(),
   kind: z.enum(TICKET_KINDS).optional(),
+  /** Digits-normalized match on contact phone (staff/MCP lookup of a caller's tickets). */
+  phone: phoneSchema.optional(),
   limit: z.number().int().min(1).max(100).optional(),
 });
 
@@ -191,6 +193,24 @@ export const ticketDetail = ticketSummary.extend({
   intake: z.record(z.string(), z.unknown()),
   callId: z.string().nullable(),
   sourceCallRef: z.string().nullable(),
+  parentTicketId: z.string().nullable(),
   notes: z.array(z.object({ content: z.string(), createdAt: z.string() })),
 });
 export type TicketDetail = z.infer<typeof ticketDetail>;
+
+export const mergeInput = z
+  .object({
+    sourceId: z.string().trim().min(1).max(255),
+    targetId: z.string().trim().min(1).max(255),
+  })
+  .refine((value) => value.sourceId !== value.targetId, {
+    message: 'sourceId and targetId must be different',
+    path: ['sourceId'],
+  });
+
+export const mergeOutput = z.object({
+  sourceId: z.string(),
+  targetId: z.string(),
+  merged: z.literal(true),
+});
+export type MergeOutput = z.infer<typeof mergeOutput>;

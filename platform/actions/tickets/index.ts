@@ -3,7 +3,7 @@ import { createTicketsActions } from './actions';
 
 export const ticketsActions: AnyActionDefinition[] = createTicketsActions();
 
-export { createTicketsActions, OPEN_COMMIT, OPEN_PREPARE, type TicketsActionDeps } from './actions';
+export { createTicketsActions, MERGE, OPEN_COMMIT, OPEN_PREPARE, type TicketsActionDeps } from './actions';
 export {
   FILE_FLOOR,
   FLOOR_MAX_TOOLS,

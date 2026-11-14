@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { normalizePhone } from '../readback';
 import type { NewActivity, NewOutboxEvent, SlaInstance, TicketRecord, TicketSettings, TicketsRepoFactory } from '../repo';
 import { ACTIVE_STATUSES, type TicketPriority } from '../schemas';
 
@@ -23,6 +24,8 @@ export interface MemoryTicketsState {
   slaInstances: MemorySlaInstance[];
   members: Map<string, Set<string>>;
   locks: string[];
+  /** `${tenantId}\0${ticketId}` from `get(..., { forUpdate: true })`, in lock order. */
+  rowLocks: string[];
   /** `${tenantId}\0${callRef}` of calls that made a booking (bookings.intake_data.qvo.session). */
   bookedCalls: Set<string>;
   /** call_sessions.id by `${tenantId}\0${callSid}`, so a CallSid finds the session's tickets and bookings. */
@@ -51,6 +54,7 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
     slaInstances: [],
     members: new Map(),
     locks: [],
+    rowLocks: [],
     bookedCalls: new Set(),
     callSessions: new Map(),
     callerNumbers: new Map(),
@@ -166,6 +170,7 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
           sourceCallRef: input.callRef,
           callbackDueAt: input.callbackDueAt,
           intake: { ...input.intake },
+          parentTicketId: null,
           createdAt: input.now,
           updatedAt: input.now,
         };
@@ -180,7 +185,8 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
         state.outbox.push({ ...event, payload: { ...event.payload }, id, tenantId, status: 'pending' });
         return id;
       },
-      async get(id) {
+      async get(id, opts) {
+        if (opts?.forUpdate) state.rowLocks.push(`${tenantId}\0${id}`);
         const found = own().find((ticket) => ticket.id === id);
         return found ? strip(found) : null;
       },
@@ -192,6 +198,7 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
         if (patch.priority !== undefined) found.priority = patch.priority;
         if (patch.urgency !== undefined) found.urgency = patch.urgency;
         if (patch.callbackDueAt !== undefined) found.callbackDueAt = patch.callbackDueAt;
+        if (patch.parentTicketId !== undefined) found.parentTicketId = patch.parentTicketId;
         found.updatedAt = now;
         return strip(found);
       },
@@ -204,6 +211,7 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
               filter.status !== 'overdue' ||
               (ticket.callbackDueAt !== null && ticket.callbackDueAt.getTime() < filter.now.getTime()),
           )
+          .filter((ticket) => !filter.phone || normalizePhone(ticket.contactPhone) === filter.phone)
           .slice(0, filter.limit)
           .map(strip);
       },

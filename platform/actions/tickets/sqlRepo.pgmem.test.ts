@@ -62,6 +62,7 @@ const SCHEMA = `
     urgency TEXT NOT NULL DEFAULT 'normal',
     source_call_ref VARCHAR(128),
     first_response_at TIMESTAMPTZ,
+    parent_ticket_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -115,6 +116,14 @@ describe('sqlTicketsRepo on pg-mem', () => {
     returns: DataType.uuid,
     implementation: () => randomUUID(),
     impure: true,
+  });
+  // pg-mem ships the 3-arg form only; list-by-phone uses the Postgres 4-arg flags form.
+  mem.public.registerFunction({
+    name: 'regexp_replace',
+    args: [DataType.text, DataType.text, DataType.text, DataType.text],
+    returns: DataType.text,
+    implementation: (input: unknown, pattern: unknown, replacement: unknown, flags: unknown) =>
+      String(input ?? '').replace(new RegExp(String(pattern), String(flags)), String(replacement ?? '')),
   });
   mem.public.none(SCHEMA);
   const { Pool } = mem.adapters.createPg();
@@ -412,5 +421,45 @@ describe('sqlTicketsRepo on pg-mem', () => {
     expect(await instance('other-sla')).toEqual(otherBefore);
     const { rows: otherTicket } = await tx.query(`SELECT first_response_at FROM tickets WHERE id = 'other-sla'`);
     expect(otherTicket[0].first_response_at).toBeNull();
+  });
+
+  it('lists by digits-normalized phone and merges source into target', async () => {
+    const { committed: sourceCommit } = await open(
+      { kind: 'message', subject: 'dup about hours', customer: { name: 'Luis', phone: '555-010-6666' } },
+      agent({ callId: 'call-merge-source' }),
+    );
+    const sourceId = ok<{ ticketId: string }>(sourceCommit).ticketId;
+    const { committed: targetCommit } = await open(
+      { kind: 'message', subject: 'hours', customer: { phone: '+1 (555) 010-6666' } },
+      agent({ callId: 'call-merge-target' }),
+    );
+    const targetId = ok<{ ticketId: string }>(targetCommit).ticketId;
+    ok(await run('tickets.add_note', owner({ idempotencyKey: 'merge-note' }), { ticketId: sourceId, note: 'Repeat of hours' }));
+
+    const listed = ok<{ tickets: Array<{ id: string }> }>(
+      await run('tickets.list', owner(), { status: 'all', phone: '555-010-6666' }),
+    );
+    expect(listed.tickets.map((t) => t.id).sort()).toEqual([sourceId, targetId].sort());
+
+    const merged = ok<{ sourceId: string; targetId: string; merged: true }>(
+      await run('tickets.merge', owner({ idempotencyKey: 'merge-1' }), { sourceId, targetId }),
+    );
+    expect(merged).toEqual({ sourceId, targetId, merged: true });
+    const { rows } = await tx.query(`SELECT status, parent_ticket_id FROM tickets WHERE id = $1`, [sourceId]);
+    expect(rows[0]).toMatchObject({ status: 'closed', parent_ticket_id: targetId });
+    const { rows: activity } = await tx.query(
+      `SELECT ticket_id, activity_type FROM ticket_activity_log WHERE activity_type = 'merged' AND ticket_id IN ($1, $2)`,
+      [sourceId, targetId],
+    );
+    expect(activity).toHaveLength(2);
+    const again = ok<{ merged: true }>(
+      await run('tickets.merge', owner({ idempotencyKey: 'merge-2' }), { sourceId, targetId }),
+    );
+    expect(again.merged).toBe(true);
+    const { rows: mergedAgain } = await tx.query(
+      `SELECT count(*)::int AS n FROM ticket_activity_log WHERE activity_type = 'merged' AND ticket_id IN ($1, $2)`,
+      [sourceId, targetId],
+    );
+    expect(Number(mergedAgain[0].n)).toBe(2);
   });
 });

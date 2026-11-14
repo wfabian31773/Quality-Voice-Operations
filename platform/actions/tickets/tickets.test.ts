@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { createMemoryStore, runAction, toAgentToolSchema, type ActionContext, type ActionResult } from '../core';
 import { createMemoryTicketsRepo } from './__fixtures__/memoryRepo';
-import { createTicketsActions, OPEN_COMMIT, OPEN_PREPARE } from './actions';
+import { createTicketsActions, MERGE, OPEN_COMMIT, OPEN_PREPARE } from './actions';
 import { ticketsActions } from './index';
 import { buildOpenReadback, normalizePhone, phoneDigitGroups } from './readback';
 import { advisoryLockKey, parseTicketSettings } from './repo';
@@ -94,12 +94,13 @@ async function prepareAndCommit(
 }
 
 describe('tickets action registry', () => {
-  it('registers the seven ticket actions under the tickets tool', () => {
+  it('registers the eight ticket actions under the tickets tool', () => {
     expect(ticketsActions.map((def) => def.name)).toEqual([
       'tickets.open.prepare',
       'tickets.open.commit',
       'tickets.add_note',
       'tickets.update',
+      'tickets.merge',
       'tickets.list',
       'tickets.get',
       'tickets.file_floor',
@@ -107,9 +108,13 @@ describe('tickets action registry', () => {
     expect(ticketsActions.every((def) => def.tool === 'tickets')).toBe(true);
   });
 
-  it('lets the agent open tickets but not update, note, list or read them', () => {
+  it('lets the agent open tickets but not update, note, merge, list or read them', () => {
     const agentAllowed = ticketsActions.filter((def) => def.permissions.agent).map((def) => def.name);
     expect(agentAllowed).toEqual(['tickets.open.prepare', 'tickets.open.commit']);
+    expect(ticketsActions.find((def) => def.name === MERGE)?.permissions).toEqual({
+      roles: ['tenant_owner', 'operations_manager'],
+      mcpScope: 'qvo:admin',
+    });
   });
 
   it('generates an agent tool schema for open.prepare', () => {
@@ -825,6 +830,199 @@ describe('tickets.list and tickets.get', () => {
     expect(detail.notes).toHaveLength(1);
     expectFail(await run('tickets.get', ownerCtx({ tenantId: OTHER }), { ticketId }), 'NOT_FOUND');
     expectFail(await run('tickets.get', agentCtx(), { ticketId }), 'FORBIDDEN');
+    expect(detail.parentTicketId).toBeNull();
+  });
+
+  it('filters by digits-normalized contact phone so staff can find a caller\'s tickets', async () => {
+    const { run } = setup();
+    const match = data<Committed>((await prepareAndCommit(run)).committed);
+    await prepareAndCommit(run, baseInput({ customer: { name: 'Ana', phone: '555-010-9999' } }), agentCtx({ callId: 'call-2' }));
+
+    const ids = async (phone: string, ctx = ownerCtx()) =>
+      data<{ tickets: Array<{ id: string }> }>(await run('tickets.list', ctx, { status: 'all', phone })).tickets.map((t) => t.id);
+
+    expect(await ids('555-010-0142')).toEqual([match.ticketId]);
+    expect(await ids('+1 (555) 010-0142')).toEqual([match.ticketId]);
+    expect(await ids('15550100142')).toEqual([match.ticketId]);
+    expect(await ids('555-010-9999')).toHaveLength(1);
+    expect(await ids('555-010-0142', ownerCtx({ tenantId: OTHER }))).toEqual([]);
+  });
+});
+
+describe('tickets.merge', () => {
+  async function twoTickets() {
+    const env = setup();
+    const source = data<Committed>((await prepareAndCommit(env.run, baseInput({ subject: 'duplicate sink' }))).committed);
+    const target = data<Committed>(
+      (await prepareAndCommit(env.run, baseInput({ subject: 'the leaking sink' }), agentCtx({ callId: 'call-2' }))).committed,
+    );
+    let key = 0;
+    const merge = (input: Record<string, unknown>, ctx: Partial<ActionContext> = {}) =>
+      env.run(MERGE, ownerCtx({ idempotencyKey: `m${(key += 1)}`, ...ctx }), input);
+    return { ...env, sourceId: source.ticketId, targetId: target.ticketId, merge };
+  }
+
+  it('closes the source under the target, writes merged activity on both, and carries source notes', async () => {
+    const { tickets, sourceId, targetId, merge, run } = await twoTickets();
+    data(await run('tickets.add_note', ownerCtx({ idempotencyKey: 'n-src' }), { ticketId: sourceId, note: 'Caller mentioned the cabinet again' }));
+    const beforeLocks = tickets.state.rowLocks.length;
+
+    const result = data<{ sourceId: string; targetId: string; merged: true }>(
+      await merge({ sourceId, targetId }),
+    );
+    expect(result).toEqual({ sourceId, targetId, merged: true });
+
+    const source = tickets.state.tickets.find((t) => t.id === sourceId)!;
+    const target = tickets.state.tickets.find((t) => t.id === targetId)!;
+    expect(source).toMatchObject({ status: 'closed', parentTicketId: targetId });
+    expect(target.status).toBe('open');
+    expect(target.parentTicketId).toBeNull();
+
+    const [firstId, secondId] = sourceId < targetId ? [sourceId, targetId] : [targetId, sourceId];
+    expect(tickets.state.rowLocks.slice(beforeLocks)).toEqual([`${TENANT}\0${firstId}`, `${TENANT}\0${secondId}`]);
+
+    const merged = tickets.state.activities.filter((a) => a.type === 'merged');
+    expect(merged).toHaveLength(2);
+    expect(merged).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ticketId: sourceId, newValue: targetId, type: 'merged' }),
+        expect.objectContaining({ ticketId: targetId, oldValue: sourceId, type: 'merged' }),
+      ]),
+    );
+
+    const detail = data<{ parentTicketId: string | null; notes: Array<{ content: string }>; status: string }>(
+      await run('tickets.get', ownerCtx(), { ticketId: targetId }),
+    );
+    expect(detail.parentTicketId).toBeNull();
+    expect(detail.notes.map((n) => n.content)).toContain('Caller mentioned the cabinet again');
+    const closed = data<{ parentTicketId: string | null; status: string }>(
+      await run('tickets.get', ownerCtx(), { ticketId: sourceId }),
+    );
+    expect(closed).toMatchObject({ status: 'closed', parentTicketId: targetId });
+  });
+
+  it('re-running the same merge is a no-op success', async () => {
+    const { tickets, sourceId, targetId, merge } = await twoTickets();
+    data(await merge({ sourceId, targetId }));
+    const activities = tickets.state.activities.length;
+    const again = data<{ merged: true }>(await merge({ sourceId, targetId }));
+    expect(again).toEqual({ sourceId, targetId, merged: true });
+    expect(tickets.state.activities).toHaveLength(activities);
+    expect(tickets.state.tickets.filter((t) => t.status === 'closed')).toHaveLength(1);
+  });
+
+  it('rejects a closed target, a ticket already merged away, and the same id twice', async () => {
+    const { run, sourceId, targetId, merge } = await twoTickets();
+    data(await run('tickets.update', ownerCtx({ idempotencyKey: 'close-t' }), { ticketId: targetId, status: 'closed' }));
+    expectFail(await merge({ sourceId, targetId }), 'VALIDATION_FAILED', 'targetId');
+
+    const env = await twoTickets();
+    data(await env.merge({ sourceId: env.sourceId, targetId: env.targetId }));
+    const third = data<Committed>(
+      (await prepareAndCommit(env.run, baseInput({ subject: 'another' }), agentCtx({ callId: 'call-3' }))).committed,
+    );
+    expectFail(await env.merge({ sourceId: env.sourceId, targetId: third.ticketId }), 'VALIDATION_FAILED', 'sourceId');
+    expectFail(await env.merge({ sourceId: third.ticketId, targetId: env.sourceId }), 'VALIDATION_FAILED', 'targetId');
+
+    const { merge: mergeSame } = await twoTickets();
+    expectFail(await mergeSame({ sourceId: 'same', targetId: 'same' }), 'VALIDATION_FAILED', 'sourceId');
+  });
+
+  it('is UI/MCP only and returns NOT_FOUND across tenants without writing', async () => {
+    const { tickets, sourceId, targetId, merge, run } = await twoTickets();
+    const before = tickets.state.activities.length;
+    expectFail(await run(MERGE, agentCtx({ idempotencyKey: 'a1' }), { sourceId, targetId }), 'FORBIDDEN');
+    expectFail(
+      await run(MERGE, ownerCtx({ actor: { type: 'user', id: 'v', role: 'viewer' }, idempotencyKey: 'v1' }), {
+        sourceId,
+        targetId,
+      }),
+      'FORBIDDEN',
+    );
+    expectFail(await merge({ sourceId, targetId }, { tenantId: OTHER }), 'NOT_FOUND');
+    expectFail(await merge({ sourceId: 'missing', targetId }), 'NOT_FOUND', 'sourceId');
+    expectFail(await merge({ sourceId, targetId: 'missing' }), 'NOT_FOUND', 'targetId');
+    expect(tickets.state.activities).toHaveLength(before);
+    expect(tickets.state.tickets.every((t) => t.status === 'open')).toBe(true);
+
+    const mcp = await run(
+      MERGE,
+      ownerCtx({ actor: { type: 'mcp', id: 'bot', scopes: ['qvo:admin'] }, idempotencyKey: 'mcp-m' }),
+      { sourceId, targetId },
+    );
+    expect(data<{ merged: true }>(mcp).merged).toBe(true);
+  });
+});
+
+describe('tools-spec §3.6 edge cases', () => {
+  it('#1 caller refuses a name: the ticket is stored with an empty name', async () => {
+    const { tickets, run } = setup();
+    const { committed } = await prepareAndCommit(run, baseInput({ customer: { phone: '555-010-0142' } }));
+    const { ticketId } = data<Committed>(committed);
+    expect(tickets.state.tickets.find((t) => t.id === ticketId)).toMatchObject({
+      contactName: '',
+      contactPhone: '555-010-0142',
+    });
+  });
+
+  it('#2 callback number differs from caller ID: the stated number is stored and read back', async () => {
+    const { tickets, run } = setup();
+    const ctx = agentCtx({ callerPhone: '+15550100100' });
+    const prepared = data<Prepared>(
+      await run(OPEN_PREPARE, ctx, baseInput({ customer: { name: 'Luis', phone: '555-010-0142' } })),
+    );
+    expect(prepared.readback).toContain('callback at 555, 010, 0142');
+    expect(prepared.readback).not.toContain('010, 0100');
+    const committed = data<Committed>(
+      await run(OPEN_COMMIT, ctx, { confirmationToken: prepared.confirmationToken, payloadHash: prepared.payloadHash }),
+    );
+    expect(tickets.state.tickets.find((t) => t.id === committed.ticketId)?.contactPhone).toBe('555-010-0142');
+  });
+
+  it('#3 caller repeats the request three times: one ticket plus notes', async () => {
+    const { tickets, run } = setup();
+    const first = data<Committed>((await prepareAndCommit(run)).committed);
+    await prepareAndCommit(run, baseInput({ subject: 'the sink again' }));
+    await prepareAndCommit(run, baseInput({ subject: 'sink, third time' }));
+    expect(tickets.state.tickets).toHaveLength(1);
+    expect(tickets.state.tickets[0].id).toBe(first.ticketId);
+    expect(tickets.state.activities.filter((a) => a.type === 'note')).toHaveLength(2);
+    expect(tickets.state.outbox).toHaveLength(1);
+  });
+
+  it('#5 call-back about an existing ticket: list by phone then add a note', async () => {
+    const { tickets, run } = setup();
+    const { ticketId } = data<Committed>((await prepareAndCommit(run)).committed);
+    const listed = data<{ tickets: Array<{ id: string }> }>(
+      await run('tickets.list', ownerCtx(), { phone: '555-010-0142' }),
+    );
+    expect(listed.tickets.map((t) => t.id)).toEqual([ticketId]);
+    data(
+      await run('tickets.add_note', ownerCtx({ idempotencyKey: 'cb1' }), {
+        ticketId: listed.tickets[0].id,
+        note: 'Called back: still leaking',
+      }),
+    );
+    expect(tickets.state.activities.filter((a) => a.type === 'note' && a.content === 'Called back: still leaking')).toHaveLength(1);
+    expect(tickets.state.tickets).toHaveLength(1);
+  });
+
+  it('#7 urgent after hours with no on-call: one urgent ticket, one ticket.opened, no promised callback time', async () => {
+    const { tickets, run } = setup();
+    const afterHours = agentCtx({ now: new Date('2026-10-18T03:00:00.000Z') });
+    const { prepared, committed } = await prepareAndCommit(
+      run,
+      baseInput({ urgency: 'urgent', subject: 'pipe burst' }),
+      afterHours,
+    );
+    const opened = data<Committed>(committed);
+    expect(opened).toMatchObject({ deduped: false, dueAt: null });
+    expect(prepared.readback).toContain('an urgent callback request about pipe burst');
+    expect(prepared.readback).not.toMatch(/within|by \d|today after/);
+    expect(tickets.state.tickets).toHaveLength(1);
+    expect(tickets.state.tickets[0]).toMatchObject({ urgency: 'urgent', priority: 'urgent', callbackDueAt: null });
+    expect(tickets.state.outbox).toHaveLength(1);
+    expect(tickets.state.outbox[0].eventType).toBe('ticket.opened');
   });
 });
 

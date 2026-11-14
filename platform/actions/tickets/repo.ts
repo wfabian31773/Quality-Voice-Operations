@@ -21,6 +21,7 @@ export interface TicketRecord {
   sourceCallRef: string | null;
   callbackDueAt: Date | null;
   intake: Record<string, unknown>;
+  parentTicketId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,7 +62,8 @@ export type ActivityType =
   | 'assigned'
   | 'unassigned'
   | 'field_change'
-  | 'reopened';
+  | 'reopened'
+  | 'merged';
 
 export interface NewActivity {
   ticketId: string;
@@ -81,11 +83,14 @@ export interface TicketPatch {
   priority?: TicketPriority;
   urgency?: TicketUrgency;
   callbackDueAt?: Date | null;
+  parentTicketId?: string | null;
 }
 
 export interface ListFilter {
   status: 'open' | 'overdue' | 'all';
   kind?: TicketKind;
+  /** Digits-normalized (US leading 1 dropped), matching `normalizePhone`. */
+  phone?: string;
   limit: number;
   now: Date;
 }
@@ -164,7 +169,7 @@ const ACTIVE_STATUS_SQL = `('open', 'in_progress', 'pending', 'escalated', 'reop
 const TICKET_COLUMNS = `
   id, ticket_number, kind, status, priority, urgency, subject, description,
   contact_name, contact_phone, assignee_user_id, call_id, source_call_ref,
-  callback_due_at, intake, created_at, updated_at`;
+  callback_due_at, intake, parent_ticket_id, created_at, updated_at`;
 
 function asDate(value: unknown): Date {
   return value instanceof Date ? value : new Date(String(value));
@@ -202,6 +207,7 @@ function mapTicket(row: Record<string, unknown>): TicketRecord {
     sourceCallRef: asNullableString(row.source_call_ref),
     callbackDueAt: row.callback_due_at ? asDate(row.callback_due_at) : null,
     intake: asIntake(row.intake),
+    parentTicketId: asNullableString(row.parent_ticket_id),
     createdAt: asDate(row.created_at),
     updatedAt: asDate(row.updated_at),
   };
@@ -230,6 +236,15 @@ export function parseTicketSettings(businessName: unknown, settings: unknown): T
 /** Signed 64-bit advisory-lock key for pg_advisory_xact_lock(bigint). */
 export function advisoryLockKey(key: string): string {
   return createHash('sha256').update(key).digest().readBigInt64BE(0).toString();
+}
+
+/**
+ * SQL that strips non-digits from a phone column. The list filter is already
+ * `normalizePhone`'d (US leading `1` dropped on 11-digit numbers). Match the
+ * stored digits, or stored `1`+10-digit (the unstripped US form).
+ */
+export function contactPhoneDigitsSql(column = 'contact_phone'): string {
+  return `regexp_replace(COALESCE(${column}, ''), '[^0-9]', '', 'g')`;
 }
 
 /**
@@ -507,6 +522,7 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
     if (patch.priority !== undefined) add('priority', patch.priority);
     if (patch.urgency !== undefined) add('urgency', patch.urgency);
     if (patch.callbackDueAt !== undefined) add('callback_due_at', patch.callbackDueAt);
+    if (patch.parentTicketId !== undefined) add('parent_ticket_id', patch.parentTicketId);
     add('updated_at', now);
     const { rows } = await tx.query(
       `UPDATE tickets SET ${sets.join(', ')} WHERE tenant_id = $1 AND id = $2 RETURNING ${TICKET_COLUMNS}`,
@@ -526,6 +542,14 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
     if (filter.status === 'overdue') {
       values.push(filter.now);
       where.push(`callback_due_at IS NOT NULL AND callback_due_at < $${values.length}`);
+    }
+    if (filter.phone) {
+      values.push(filter.phone);
+      const digits = contactPhoneDigitsSql('contact_phone');
+      // Exact digits, or stored 11-digit US form `1` + 10-digit filter.
+      where.push(
+        `(${digits} = $${values.length} OR (${digits} = '1' || $${values.length} AND ${digits} LIKE '1__________'))`,
+      );
     }
     values.push(filter.limit);
     const { rows } = await tx.query(
