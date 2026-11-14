@@ -166,5 +166,39 @@ describe('CampaignScheduler leadership fence', () => {
     await vi.advanceTimersByTimeAsync(15_000);
 
     expect(dialContact).toHaveBeenCalledTimes(1);
+    expect(revertContactToPending).not.toHaveBeenCalled();
+  });
+
+  it('reverts a claimed, undialed contact when leadership is lost after pickup', async () => {
+    let releaseContact!: (value: ReturnType<typeof contact> | null) => void;
+    let notifyPickup: () => void = () => {};
+    const pickupSeen = new Promise<void>((resolve) => {
+      notifyPickup = resolve;
+    });
+    getNextPendingContact.mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          notifyPickup();
+          releaseContact = res;
+        }),
+    );
+    dialContact.mockResolvedValue({ success: true, callSid: 'CA1' });
+
+    const scheduler = new CampaignScheduler({
+      pollIntervalMs: 15_000,
+      outboundCallbackBaseUrl: 'https://voice.example.com',
+      statusCallbackUrl: 'https://voice.example.com/twilio/status',
+    });
+    scheduler.start();
+    await pickupSeen;
+
+    scheduler.stop();
+    releaseContact(contact('c1'));
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(dialContact).not.toHaveBeenCalled();
+    expect(revertContactToPending).toHaveBeenCalledWith('t1', 'c1');
   });
 });

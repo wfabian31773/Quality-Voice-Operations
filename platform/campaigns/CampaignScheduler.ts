@@ -92,6 +92,29 @@ export class CampaignScheduler {
     return !this.stopped && epoch === this.epoch;
   }
 
+  /**
+   * If leadership was lost after `getNextPendingContact` claimed a row
+   * (`dialing` + attempt bump) but before we placed a call, roll it back so
+   * the next leader can retry it. Returns true when the tick should abort.
+   */
+  private async abortClaimedContact(
+    epoch: number,
+    tenantId: string,
+    contactId: string,
+  ): Promise<boolean> {
+    if (this.stillLeader(epoch)) return false;
+    try {
+      await revertContactToPending(tenantId, contactId);
+    } catch (err) {
+      logger.warn('Failed to revert claimed contact after losing leadership', {
+        tenantId,
+        contactId,
+        error: String(err),
+      });
+    }
+    return true;
+  }
+
   private async tick(epoch: number = this.epoch): Promise<void> {
     if (this.running || !this.stillLeader(epoch)) return;
     this.running = true;
@@ -169,8 +192,11 @@ export class CampaignScheduler {
             retryDelayMinutes,
             tickSkippedIds,
           );
-          if (!this.stillLeader(epoch)) return;
-          if (!contact) break;
+          if (!contact) {
+            if (!this.stillLeader(epoch)) return;
+            break;
+          }
+          if (await this.abortClaimedContact(epoch, campaign.tenantId, contact.id)) return;
 
           const quietHours = evaluateQuietHours(contact.phoneNumber, campaign.config);
           if (!quietHours.allowed) {
@@ -196,7 +222,7 @@ export class CampaignScheduler {
           }
           consecutiveQuietHourSkips = 0;
 
-          if (!this.stillLeader(epoch)) return;
+          if (await this.abortClaimedContact(epoch, campaign.tenantId, contact.id)) return;
           const dncCheck = await isContactOnDnc(campaign.tenantId, contact.phoneNumber);
           if (dncCheck.onDnc) {
             const reason = dncCheck.source === 'federal'
@@ -222,6 +248,7 @@ export class CampaignScheduler {
             continue;
           }
 
+          if (await this.abortClaimedContact(epoch, campaign.tenantId, contact.id)) return;
           const verifiedCallerIdCfg = campaign.config.verifiedCallerId ?? null;
           let fromNumber: string | undefined;
           if (verifiedCallerIdCfg) {
@@ -246,7 +273,7 @@ export class CampaignScheduler {
             fromNumber = verified.phoneNumber;
           }
 
-          if (!this.stillLeader(epoch)) return;
+          if (await this.abortClaimedContact(epoch, campaign.tenantId, contact.id)) return;
           const result = await dialContact({
             tenantId: campaign.tenantId,
             campaignId: campaign.id,
