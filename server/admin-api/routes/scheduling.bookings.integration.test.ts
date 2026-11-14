@@ -264,6 +264,26 @@ describe.skipIf(!dbReachable)('admin booking writes: holds, idempotency, races, 
     expect(audit).toEqual([{ action: 'created', changed_by: userId }]);
   });
 
+  it('concurrent POSTs with the same UI key insert one row', async () => {
+    day += 1;
+    const payload = {
+      title: 'Trim', start_time: at('12:00'), end_time: at('12:30'), provider_id: providerId,
+    };
+    const key = `click-race-${day}`;
+    const [aRes, bRes] = await Promise.all([
+      request(app()).post('/scheduling/bookings').set('Idempotency-Key', key).send(payload),
+      request(app()).post('/scheduling/bookings').set('Idempotency-Key', key).send(payload),
+    ]);
+    const statuses = [aRes.status, bRes.status].sort();
+    expect(statuses).toEqual([200, 201]);
+    expect(aRes.body.booking.id).toBe(bRes.body.booking.id);
+    const { rows } = await pool.query(
+      `SELECT id FROM bookings WHERE tenant_id = $1 AND idempotency_key = $2`,
+      [tenantId, `ui:${key}`],
+    );
+    expect(rows).toHaveLength(1);
+  });
+
   it('same Idempotency-Key with a different body returns 409 and does not insert', async () => {
     day += 1;
     const key = `click-diff-${day}`;

@@ -219,7 +219,27 @@ function asText(value: string | null | undefined): string {
   return value ?? '';
 }
 
-/** Canonical create payload for same-key / different-body detection. Timezone is filled server-side when omitted, so it is left out. */
+function canonicalIntake(value: unknown): string {
+  if (value == null || value === '') return '{}';
+  if (typeof value === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(value) ?? {});
+    } catch {
+      return JSON.stringify({ raw: value });
+    }
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '{}';
+  }
+}
+
+function suppliedTimezone(value: string | undefined): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/** Canonical create payload for same-key / different-body detection. */
 export function createBookingFingerprint(input: CreateBookingBody): string {
   return JSON.stringify({
     title: input.title,
@@ -238,6 +258,8 @@ export function createBookingFingerprint(input: CreateBookingBody): string {
     recurring_series_id: asId(input.recurring_series_id),
     location: asText(input.location),
     booking_source: input.booking_source ?? 'manual',
+    intake_data: canonicalIntake(input.intake_data),
+    timezone: suppliedTimezone(input.timezone),
   });
 }
 
@@ -259,6 +281,8 @@ export function bookingRowFingerprint(row: Record<string, unknown>): string {
     recurring_series_id: row.recurring_series_id == null || row.recurring_series_id === '' ? null : String(row.recurring_series_id),
     location: String(row.location ?? ''),
     booking_source: String(row.booking_source ?? 'manual'),
+    intake_data: canonicalIntake(row.intake_data),
+    timezone: String(row.timezone ?? ''),
   });
 }
 

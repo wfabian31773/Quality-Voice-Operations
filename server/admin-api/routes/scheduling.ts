@@ -1089,10 +1089,26 @@ function replayOrReuseIdempotency(
   existing: Record<string, unknown>,
   body: CreateBookingBody,
 ): { status: 200 | 409; body: Record<string, unknown> } {
-  if (createBookingFingerprint(body) === bookingRowFingerprint(existing)) {
+  // Omitted timezone is filled server-side from the tenant, so treat it as
+  // whatever the stored row already has. An explicit timezone still has to match.
+  const suppliedTz = typeof body.timezone === 'string' ? body.timezone.trim() : '';
+  const compareBody = suppliedTz ? body : { ...body, timezone: String(existing.timezone ?? '') };
+  if (createBookingFingerprint(compareBody) === bookingRowFingerprint(existing)) {
     return { status: 200, body: { booking: existing } };
   }
   return { status: 409, body: IDEMPOTENCY_KEY_REUSED_BODY };
+}
+
+async function replayStoredIdempotency(
+  pool: SchedulingQueryPool,
+  tenantId: string,
+  idempotencyKey: string | null,
+  body: CreateBookingBody,
+): Promise<{ status: 200 | 409; body: Record<string, unknown> } | null> {
+  if (!idempotencyKey) return null;
+  const existing = await loadBookingByIdempotencyKey(pool, tenantId, idempotencyKey);
+  if (!existing) return null;
+  return replayOrReuseIdempotency(existing, body);
 }
 
 const createBookingHandler: RequestHandler = async (req, res) => {
@@ -1149,6 +1165,8 @@ const createBookingHandler: RequestHandler = async (req, res) => {
           pool, tenantId, start_time, end_time, asOptionalId(provider_id), asOptionalId(resource_id),
         );
         if (conflicts.length > 0) {
+          const replay = await replayStoredIdempotency(pool, tenantId, idempotencyKey, parsedBody.data);
+          if (replay) return res.status(replay.status).json(replay.body);
           if (occupiesSlot(status)) {
             const held = await phoneHoldConflictResponse(
               pool, tenantId, start_time, end_time, provider_id, resource_id,
@@ -1205,12 +1223,9 @@ const createBookingHandler: RequestHandler = async (req, res) => {
 
     return res.status(201).json({ booking: rows[0] });
   } catch (err) {
-    if (idempotencyKey && isIdempotencyUniqueViolation(err)) {
-      const existing = await loadBookingByIdempotencyKey(pool, tenantId, idempotencyKey);
-      if (existing) {
-        const replay = replayOrReuseIdempotency(existing, parsedBody.data);
-        return res.status(replay.status).json(replay.body);
-      }
+    if (idempotencyKey && (isIdempotencyUniqueViolation(err) || bookingOverlapKind(err) !== null)) {
+      const replay = await replayStoredIdempotency(pool, tenantId, idempotencyKey, parsedBody.data);
+      if (replay) return res.status(replay.status).json(replay.body);
     }
     const overlap = await overlapConflictBody(
       err, pool, tenantId, start_time, end_time, provider_id, resource_id,

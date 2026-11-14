@@ -34,7 +34,7 @@ are the admin booking handlers in `server/admin-api/routes/scheduling.ts`.
 | 14 | Earliest-anything after same-day cutoff | `applies booking rules from the database (same-day off)` (`readActions.test.ts`) | Lead-time / same-day 400s on create (handler + existing overlap tests) |
 | 15 | Booking for someone else (name vs caller phone) | book.prepare customer name/phone in `writeActions.integration.test.ts` | — |
 
-Owner-side extras (not numbered in §1.6): `two concurrent cancels: one wins and the other gets 409`; `tenant B booking ids 404 on update, transition, and delete and leave the row unchanged`; `same Idempotency-Key with a different body returns 409 and does not insert`.
+Owner-side extras (not numbered in §1.6): `two concurrent cancels: one wins and the other gets 409`; `tenant B booking ids 404 on update, transition, and delete and leave the row unchanged`; `same Idempotency-Key with a different body returns 409 and does not insert`; `concurrent POSTs with the same UI key insert one row`.
 
 ## Still open
 

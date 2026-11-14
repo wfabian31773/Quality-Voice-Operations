@@ -269,6 +269,51 @@ describe('POST /scheduling/bookings Idempotency-Key', () => {
     expect(res.status).toBe(200);
     expect(res.body.booking.id).toBe('bk1');
   });
+
+  it('a concurrent same-key POST that hits a slot conflict still replays', async () => {
+    const stored = { ...CUT, provider_id: 'p1' };
+    let keyLookups = 0;
+    a.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (/FROM bookings WHERE tenant_id = \$1 AND idempotency_key = \$2/.test(sql)) {
+        keyLookups += 1;
+        return keyLookups === 1 ? { rows: [] } : { rows: [stored] };
+      }
+      if (/SELECT id, title, start_time, end_time FROM bookings/.test(sql)) {
+        return { rows: [{ id: 'bk1', title: 'Cut', start_time: stored.start_time, end_time: stored.end_time }] };
+      }
+      return { rows: [] };
+    });
+    const res = await request(app()).post('/scheduling/bookings').set('Idempotency-Key', 'click-1').send({
+      ...payload, provider_id: 'p1',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.booking.id).toBe('bk1');
+    expect(a.poolQueryMock.mock.calls.some(([sql]) => /INSERT INTO bookings/.test(String(sql)))).toBe(false);
+  });
+
+  it('same key + different intake_data returns 409 IDEMPOTENCY_KEY_REUSED', async () => {
+    a.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (/idempotency_key = \$2/.test(sql)) return { rows: [{ ...CUT, intake_data: {} }] };
+      return { rows: [] };
+    });
+    const res = await request(app()).post('/scheduling/bookings').set('Idempotency-Key', 'click-1').send({
+      ...payload, intake_data: { source: 'walk-in' },
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('IDEMPOTENCY_KEY_REUSED');
+  });
+
+  it('same key + different explicit timezone returns 409 IDEMPOTENCY_KEY_REUSED', async () => {
+    a.poolQueryMock.mockImplementation(async (sql: string) => {
+      if (/idempotency_key = \$2/.test(sql)) return { rows: [{ ...CUT, timezone: 'America/New_York' }] };
+      return { rows: [] };
+    });
+    const res = await request(app()).post('/scheduling/bookings').set('Idempotency-Key', 'click-1').send({
+      ...payload, timezone: 'America/Los_Angeles',
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('IDEMPOTENCY_KEY_REUSED');
+  });
 });
 
 describe('transition / delete tenant miss', () => {
