@@ -13,6 +13,18 @@ import {
   transitionBooking,
   writeSchedulingAuditLog,
 } from '../../../platform/scheduling/bookingLifecycle';
+import {
+  bookingRowFingerprint,
+  createBookingFingerprint,
+  isIdempotencyUniqueViolation,
+  parseBookingIdParams,
+  parseCreateBookingBody,
+  parseTransitionBookingBody,
+  parseUiIdempotencyKey,
+  parseUpdateBookingBody,
+  phoneHoldConflictBody,
+  type CreateBookingBody,
+} from './schedulingSchemas';
 
 const router = Router();
 const logger = createLogger('ADMIN_SCHEDULING');
@@ -917,6 +929,143 @@ export const getBookingHandler: RequestHandler = async (req, res) => {
 // 409 body when a write hits the 122 no-double-booking constraints (23P01).
 const SLOT_UNAVAILABLE_BODY = { error: 'That time slot is no longer available', reason: 'slot_unavailable' };
 
+const IDEMPOTENCY_KEY_REUSED_BODY = {
+  error: 'Idempotency key was reused with a different payload',
+  code: 'IDEMPOTENCY_KEY_REUSED',
+};
+
+type SchedulingQueryPool = {
+  query: (sql: string, values?: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number | null }>;
+};
+
+function occupiesSlot(status: string | undefined): boolean {
+  const value = status || 'confirmed';
+  return value === 'confirmed' || value === 'held';
+}
+
+function asIso(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function asOptionalId(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  return String(value);
+}
+
+async function findLivePhoneHold(
+  pool: SchedulingQueryPool,
+  tenantId: string,
+  startTime: string,
+  endTime: string,
+  providerId?: string | null,
+  resourceId?: string | null,
+  excludeBookingId?: string,
+): Promise<{ id: string; hold_expires_at: Date | string } | null> {
+  if (!providerId && !resourceId) return null;
+  const vals: unknown[] = [tenantId, startTime, endTime];
+  const conds = [
+    'tenant_id = $1',
+    "status = 'held'",
+    'hold_expires_at > NOW()',
+    'start_time < $3::timestamptz',
+    'COALESCE(blocked_until, end_time) > $2::timestamptz',
+  ];
+  const scope: string[] = [];
+  if (providerId) {
+    vals.push(providerId);
+    scope.push(`provider_id = $${vals.length}`);
+  }
+  if (resourceId) {
+    vals.push(resourceId);
+    scope.push(`resource_id = $${vals.length}`);
+  }
+  if (scope.length > 0) conds.push(`(${scope.join(' OR ')})`);
+  if (excludeBookingId) {
+    vals.push(excludeBookingId);
+    conds.push(`id <> $${vals.length}`);
+  }
+  const { rows } = await pool.query(
+    `SELECT id, hold_expires_at FROM bookings
+      WHERE ${conds.join(' AND ')}
+      ORDER BY hold_expires_at ASC
+      LIMIT 1`,
+    vals,
+  );
+  const row = rows[0] as { id: string; hold_expires_at: Date | string } | undefined;
+  return row ?? null;
+}
+
+async function phoneHoldConflictResponse(
+  pool: SchedulingQueryPool,
+  tenantId: string,
+  startTime: string,
+  endTime: string,
+  providerId?: string | null,
+  resourceId?: string | null,
+  excludeBookingId?: string,
+) {
+  const hold = await findLivePhoneHold(
+    pool, tenantId, asIso(startTime), asIso(endTime), providerId, resourceId, excludeBookingId,
+  );
+  if (!hold) return null;
+  const tz = await getTenantTimezone(pool as ReturnType<typeof getPlatformPool>, tenantId);
+  return phoneHoldConflictBody(new Date(hold.hold_expires_at), tz);
+}
+
+async function overlapConflictBody(
+  err: unknown,
+  pool: SchedulingQueryPool,
+  tenantId: string,
+  startTime: string,
+  endTime: string,
+  providerId?: string | null,
+  resourceId?: string | null,
+  excludeBookingId?: string,
+) {
+  if (bookingOverlapKind(err) === null) return null;
+  return (await phoneHoldConflictResponse(
+    pool, tenantId, startTime, endTime, providerId, resourceId, excludeBookingId,
+  )) ?? SLOT_UNAVAILABLE_BODY;
+}
+
+/** Used on 23P01 after confirm/reschedule so we can name a live phone hold. */
+async function phoneHoldForBooking(
+  pool: SchedulingQueryPool,
+  tenantId: string,
+  bookingId: string,
+  startTime?: string,
+  endTime?: string,
+) {
+  const { rows } = await pool.query(
+    `SELECT * FROM bookings WHERE id = $1 AND tenant_id = $2`,
+    [bookingId, tenantId],
+  );
+  const row = rows[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return phoneHoldConflictResponse(
+    pool,
+    tenantId,
+    startTime ?? asIso(row.start_time),
+    endTime ?? asIso(row.end_time),
+    asOptionalId(row.provider_id),
+    asOptionalId(row.resource_id),
+    bookingId,
+  );
+}
+
+async function loadBookingByIdempotencyKey(
+  pool: SchedulingQueryPool,
+  tenantId: string,
+  idempotencyKey: string,
+): Promise<Record<string, unknown> | null> {
+  const { rows } = await pool.query(
+    `SELECT * FROM bookings WHERE tenant_id = $1 AND idempotency_key = $2 LIMIT 1`,
+    [tenantId, idempotencyKey],
+  );
+  return (rows[0] as Record<string, unknown> | undefined) ?? null;
+}
+
 async function checkConflicts(pool: ReturnType<typeof getPlatformPool>, tenantId: string, startTime: string, endTime: string, providerId?: string, resourceId?: string, excludeBookingId?: string) {
   return checkBookingConflicts(pool, tenantId, startTime, endTime, providerId, resourceId, excludeBookingId);
 }
@@ -936,27 +1085,44 @@ async function getBookingRules(pool: ReturnType<typeof getPlatformPool>, tenantI
   return rows[0] || null;
 }
 
+function replayOrReuseIdempotency(
+  existing: Record<string, unknown>,
+  body: CreateBookingBody,
+): { status: 200 | 409; body: Record<string, unknown> } {
+  if (createBookingFingerprint(body) === bookingRowFingerprint(existing)) {
+    return { status: 200, body: { booking: existing } };
+  }
+  return { status: 409, body: IDEMPOTENCY_KEY_REUSED_BODY };
+}
+
 const createBookingHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const { title, description, start_time, end_time, status, contact_name, contact_phone, contact_email,
+  const parsedBody = parseCreateBookingBody(req.body);
+  if (!parsedBody.ok) return res.status(400).json(parsedBody.body);
+  const parsedKey = parseUiIdempotencyKey(req.header('Idempotency-Key') ?? req.header('idempotency-key'));
+  if (!parsedKey.ok) return res.status(400).json(parsedKey.body);
+
+  const {
+    title, description, start_time, end_time, status, contact_name, contact_phone, contact_email,
     agent_id, notes, provider_id, appointment_type_id, resource_id, recurring_series_id,
-    intake_data, timezone, location, booking_source, override_reason } = req.body;
-
-  if (!title || !start_time || !end_time) {
-    return res.status(400).json({ error: 'title, start_time, and end_time are required' });
-  }
-
-  if (new Date(start_time) >= new Date(end_time)) {
-    return res.status(400).json({ error: 'start_time must be before end_time' });
-  }
-
+    intake_data, timezone, location, booking_source, override_reason,
+  } = parsedBody.data;
+  const idempotencyKey = parsedKey.key;
   const pool = getPlatformPool();
 
   try {
+    if (idempotencyKey) {
+      const existing = await loadBookingByIdempotencyKey(pool, tenantId, idempotencyKey);
+      if (existing) {
+        const replay = replayOrReuseIdempotency(existing, parsedBody.data);
+        return res.status(replay.status).json(replay.body);
+      }
+    }
+
     let tenantTz: string | null = null;
 
     if (!override_reason) {
-      const rules = await getBookingRules(pool, tenantId, appointment_type_id);
+      const rules = await getBookingRules(pool, tenantId, appointment_type_id ?? undefined);
       const startDate = new Date(start_time);
       const now = new Date();
       const hoursUntil = (startDate.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -979,8 +1145,16 @@ const createBookingHandler: RequestHandler = async (req, res) => {
       // check; the 122 exclusion constraints still reject the overlap (409).
       const allowDoubleBook = rules?.allow_double_book ?? false;
       if (!allowDoubleBook && (provider_id || resource_id)) {
-        const conflicts = await checkConflicts(pool, tenantId, start_time, end_time, provider_id, resource_id);
+        const conflicts = await checkConflicts(
+          pool, tenantId, start_time, end_time, asOptionalId(provider_id), asOptionalId(resource_id),
+        );
         if (conflicts.length > 0) {
+          if (occupiesSlot(status)) {
+            const held = await phoneHoldConflictResponse(
+              pool, tenantId, start_time, end_time, provider_id, resource_id,
+            );
+            if (held) return res.status(409).json(held);
+          }
           return res.status(409).json({ error: 'Time slot conflict detected', conflicts });
         }
       }
@@ -1016,21 +1190,32 @@ const createBookingHandler: RequestHandler = async (req, res) => {
       `INSERT INTO bookings (tenant_id, title, description, start_time, end_time, status,
         contact_name, contact_phone, contact_email, agent_id, created_by, notes,
         provider_id, appointment_type_id, resource_id, recurring_series_id,
-        intake_data, timezone, location, booking_source)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        intake_data, timezone, location, booking_source, idempotency_key)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
        RETURNING *`,
       [tenantId, title, description || '', start_time, end_time, status || 'confirmed',
         contact_name || '', contact_phone || '', contact_email || '',
         agent_id || null, req.user!.userId, notes || '',
         provider_id || null, appointment_type_id || null, resource_id || null, recurring_series_id || null,
-        JSON.stringify(intake_data || {}), resolvedTimezone, location || '', booking_source || 'manual'],
+        JSON.stringify(intake_data || {}), resolvedTimezone, location || '', booking_source || 'manual',
+        idempotencyKey],
     );
 
     await auditLog(pool, tenantId, rows[0].id, 'created', null, rows[0].status, req.user!.userId, { title, provider_id, appointment_type_id }, override_reason || '');
 
     return res.status(201).json({ booking: rows[0] });
   } catch (err) {
-    if (bookingOverlapKind(err) !== null) return res.status(409).json(SLOT_UNAVAILABLE_BODY);
+    if (idempotencyKey && isIdempotencyUniqueViolation(err)) {
+      const existing = await loadBookingByIdempotencyKey(pool, tenantId, idempotencyKey);
+      if (existing) {
+        const replay = replayOrReuseIdempotency(existing, parsedBody.data);
+        return res.status(replay.status).json(replay.body);
+      }
+    }
+    const overlap = await overlapConflictBody(
+      err, pool, tenantId, start_time, end_time, provider_id, resource_id,
+    );
+    if (overlap) return res.status(409).json(overlap);
     logger.error('Failed to create booking', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to create booking' });
   }
@@ -1038,8 +1223,16 @@ const createBookingHandler: RequestHandler = async (req, res) => {
 
 const updateBookingHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const { id } = req.params;
+  const parsedParams = parseBookingIdParams(req.params);
+  if (!parsedParams.ok) return res.status(400).json(parsedParams.body);
+  const parsedBody = parseUpdateBookingBody(req.body);
+  if (!parsedBody.ok) return res.status(400).json(parsedBody.body);
+  const { id } = parsedParams.data;
   const pool = getPlatformPool();
+  let slotStart = '';
+  let slotEnd = '';
+  let slotProvider: string | null | undefined;
+  let slotResource: string | null | undefined;
 
   try {
     const { rows: existing } = await pool.query(
@@ -1051,20 +1244,29 @@ const updateBookingHandler: RequestHandler = async (req, res) => {
     const old = existing[0];
     const { title, description, start_time, end_time, status, contact_name, contact_phone,
       contact_email, agent_id, notes, provider_id, appointment_type_id, resource_id,
-      intake_data, timezone, location, override_reason } = req.body;
-
-    if (start_time && end_time && new Date(start_time) >= new Date(end_time)) {
-      return res.status(400).json({ error: 'start_time must be before end_time' });
-    }
+      intake_data, timezone, location, override_reason } = parsedBody.data;
 
     const newStart = start_time || old.start_time;
     const newEnd = end_time || old.end_time;
     const newProviderId = provider_id !== undefined ? provider_id : old.provider_id;
     const newResourceId = resource_id !== undefined ? resource_id : old.resource_id;
+    const newStatus = status || old.status;
+    slotStart = asIso(newStart);
+    slotEnd = asIso(newEnd);
+    slotProvider = newProviderId;
+    slotResource = newResourceId;
 
     if (start_time || end_time || provider_id || resource_id) {
-      const conflicts = await checkConflicts(pool, tenantId, newStart, newEnd, newProviderId, newResourceId, id);
+      const conflicts = await checkConflicts(
+        pool, tenantId, asIso(newStart), asIso(newEnd), asOptionalId(newProviderId), asOptionalId(newResourceId), id,
+      );
       if (conflicts.length > 0) {
+        if (occupiesSlot(String(newStatus))) {
+          const held = await phoneHoldConflictResponse(
+            pool, tenantId, slotStart, slotEnd, slotProvider, slotResource, id,
+          );
+          if (held) return res.status(409).json(held);
+        }
         return res.status(409).json({ error: 'Time slot conflict detected', conflicts });
       }
 
@@ -1110,7 +1312,9 @@ const updateBookingHandler: RequestHandler = async (req, res) => {
     if (status && status !== old.status) {
       await auditLog(pool, tenantId, id, 'status_changed', old.status, status, req.user!.userId, { title: rows[0].title });
     } else {
-      await auditLog(pool, tenantId, id, 'updated', old.status, rows[0].status, req.user!.userId, { changed_fields: Object.keys(req.body) });
+      await auditLog(pool, tenantId, id, 'updated', old.status, rows[0].status, req.user!.userId, {
+        changed_fields: Object.keys(parsedBody.data).filter((key) => (parsedBody.data as Record<string, unknown>)[key] !== undefined),
+      });
     }
 
     // A direct PUT that moves the appointment time is a reschedule from
@@ -1159,7 +1363,10 @@ const updateBookingHandler: RequestHandler = async (req, res) => {
 
     return res.json({ booking: rows[0] });
   } catch (err) {
-    if (bookingOverlapKind(err) !== null) return res.status(409).json(SLOT_UNAVAILABLE_BODY);
+    const overlap = slotStart
+      ? await overlapConflictBody(err, pool, tenantId, slotStart, slotEnd, slotProvider, slotResource, id)
+      : (bookingOverlapKind(err) !== null ? SLOT_UNAVAILABLE_BODY : null);
+    if (overlap) return res.status(409).json(overlap);
     logger.error('Failed to update booking', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to update booking' });
   }
@@ -1169,11 +1376,17 @@ const updateBookingHandler: RequestHandler = async (req, res) => {
 
 export const transitionBookingHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const { id } = req.params;
-  const { action, cancellation_reason, override_reason, new_start_time, new_end_time } = req.body;
+  const parsedParams = parseBookingIdParams(req.params);
+  if (!parsedParams.ok) return res.status(400).json(parsedParams.body);
+  const parsedBody = parseTransitionBookingBody(req.body);
+  if (!parsedBody.ok) return res.status(400).json(parsedBody.body);
+  const { id } = parsedParams.data;
+  const { action, cancellation_reason, override_reason, new_start_time, new_end_time } = parsedBody.data;
   const pool = getPlatformPool();
   // One transaction, so a reschedule's UPDATE (original -> 'rescheduled')
-  // and its replacement INSERT commit or roll back together.
+  // and its replacement INSERT commit or roll back together. The status
+  // write is `WHERE id AND tenant AND status = expected`; a lost race is
+  // 409 rather than a silent overwrite.
   const client = await pool.connect();
   const tx = client as unknown as ReturnType<typeof getPlatformPool>;
 
@@ -1196,6 +1409,13 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
         return buildOverrideConflictResponse(tx, tenantId, startTime, endTime, providerId, tenantTz);
       },
     });
+    if (!result.ok && result.httpStatus === 400 && /Cannot \S+ a booking with status/.test(String(result.body.error))) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'That appointment was just changed by the shop. Do not claim it was cancelled or moved. Offer to check again or leave a message.',
+        reason: 'stale_status',
+      });
+    }
     await client.query(result.ok ? 'COMMIT' : 'ROLLBACK');
     if (result.ok) for (const effect of result.afterCommit ?? []) effect();
     return res.status(result.httpStatus).json(result.body);
@@ -1203,7 +1423,13 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
     await client.query('ROLLBACK').catch(() => {});
     // reschedule and confirm write held/confirmed rows; the 122 constraints
     // reject overlaps even with override_reason.
-    if (bookingOverlapKind(err) !== null) return res.status(409).json(SLOT_UNAVAILABLE_BODY);
+    if (bookingOverlapKind(err) !== null) {
+      const held = await phoneHoldForBooking(
+        pool, tenantId, id, action === 'reschedule' ? new_start_time : undefined, action === 'reschedule' ? new_end_time : undefined,
+      );
+      if (held) return res.status(409).json(held);
+      return res.status(409).json(SLOT_UNAVAILABLE_BODY);
+    }
     logger.error('Failed to transition booking', { tenantId, error: String(err) });
     return res.status(500).json({ error: 'Failed to transition booking' });
   } finally {
@@ -1213,17 +1439,25 @@ export const transitionBookingHandler: RequestHandler = async (req, res) => {
 
 const deleteBookingHandler: RequestHandler = async (req, res) => {
   const { tenantId } = req.user!;
-  const { id } = req.params;
+  const parsedParams = parseBookingIdParams(req.params);
+  if (!parsedParams.ok) return res.status(400).json(parsedParams.body);
+  const { id } = parsedParams.data;
   const pool = getPlatformPool();
 
   try {
+    const { rows: existing } = await pool.query(
+      `SELECT id, status FROM bookings WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (existing.length === 0) return res.status(404).json({ error: 'Booking not found' });
+
     const { rowCount } = await pool.query(
       `DELETE FROM bookings WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
     );
     if (rowCount === 0) return res.status(404).json({ error: 'Booking not found' });
 
-    await auditLog(pool, tenantId, id, 'deleted', null, null, req.user!.userId);
+    await auditLog(pool, tenantId, id, 'deleted', String(existing[0].status ?? ''), null, req.user!.userId);
 
     return res.json({ success: true });
   } catch (err) {
