@@ -150,6 +150,16 @@ const PRIORITY_ICONS: Record<string, { icon: typeof Flag; color: string }> = {
   normal: { icon: Flag, color: 'text-text-muted' },
 };
 
+function createReplyIdempotencyKey(): string {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  if (globalThis.crypto?.getRandomValues) {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+  // Older contexts without Web Crypto still need a collision-resistant key.
+  return `sms-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export default function SmsInbox() {
   const { user } = useAuth();
   const isManager = ['tenant_owner', 'operations_manager'].includes(user?.role ?? '');
@@ -183,6 +193,13 @@ export default function SmsInbox() {
   const [bulkAction, setBulkAction] = useState<string>('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const replyIdempotencyKeyRef = useRef<string | null>(null);
+  const replyInFlightRef = useRef(false);
+  const replyScheduledAt = showSchedule && scheduleDate ? scheduleDate : undefined;
+
+  useEffect(() => {
+    replyIdempotencyKeyRef.current = null;
+  }, [selectedConv?.id, replyText, replyScheduledAt]);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -303,14 +320,23 @@ export default function SmsInbox() {
     } catch {}
   };
 
+  /**
+   * Reuse the key on unchanged-draft retries; edits or success retire it.
+   * The in-flight ref blocks submits before React re-renders.
+   */
   const sendReply = async () => {
-    if (!replyText.trim() || !selectedConv) return;
+    if (!replyText.trim() || !selectedConv || replyInFlightRef.current) return;
+    replyInFlightRef.current = true;
     setSending(true);
     try {
       const payload: Record<string, unknown> = { body: replyText };
-      if (showSchedule && scheduleDate) payload.scheduledAt = scheduleDate;
+      if (replyScheduledAt) payload.scheduledAt = replyScheduledAt;
+      const idempotencyKey = replyIdempotencyKeyRef.current ??= createReplyIdempotencyKey();
 
-      const data = await api.post<{ message: Message }>(`/sms-inbox/threads/${selectedConv.id}/messages`, payload);
+      const data = await api.post<{ message: Message }>(`/sms-inbox/threads/${selectedConv.id}/messages`, payload, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+      });
+      replyIdempotencyKeyRef.current = null;
       setMessages(prev => [...prev, data.message]);
       setReplyText('');
       setShowSchedule(false);
@@ -318,6 +344,7 @@ export default function SmsInbox() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send');
     } finally {
+      replyInFlightRef.current = false;
       setSending(false);
     }
   };

@@ -25,7 +25,8 @@ Not covered here (other PRs / later): inbound STOP/START/HELP and spoofed webhoo
 
 ## Still open
 
-- Client-app does not send `Idempotency-Key` yet, so a UI double-click without the header can still send two texts. Wire the header in the composer as a follow-up.
+- The SMS Inbox composer now sends an `Idempotency-Key` on every reply (one key per draft: reused when the same text/schedule is retried on the same thread, rotated after success or any edit) and ignores a second submit while one is in flight (`client-app/src/pages/SmsInbox.tsx`, tests in `SmsInbox.test.tsx`).
+- Scheduled sends (`scheduledAt`) validate the key but the server does not yet dedupe the scheduled row on replay, so an ambiguous failure on a scheduled reply can still store two scheduled rows. Server follow-up.
 - Replaying a reply with a key writes a second `message_sent` activity row (the SMS is not resent). Skip activity on chokepoint replay if that becomes noisy.
 - Notes / template / rule writes are not keyed for HTTP idempotency (only replies go through `sms.send`).
 - `PUT /sms-inbox/compliance-settings` and `POST /sms-inbox/ai-draft` are outside this validation pass.
