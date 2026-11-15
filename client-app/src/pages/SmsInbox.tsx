@@ -150,6 +150,44 @@ const PRIORITY_ICONS: Record<string, { icon: typeof Flag; color: string }> = {
   normal: { icon: Flag, color: 'text-text-muted' },
 };
 
+function createReplyIdempotencyKey(): string {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  if (globalThis.crypto?.getRandomValues) {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+  // Older contexts without Web Crypto still need a collision-resistant key.
+  return `sms-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * True when the server answered with a definitive "not sent" rejection for
+ * this exact draft. The action runtime caches non-retryable failures under the
+ * idempotency key, so reusing the key after one of these would replay the old
+ * failure (e.g. after credentials are fixed). The inbox route also releases
+ * that row and sets `final: true` on these responses.
+ *
+ * `final: true` / `PROVIDER_REJECTED` covers a Twilio auth/permission
+ * rejection that used to look like a 500 `UPSTREAM_UNAVAILABLE`. 400 / 404 /
+ * 409, 403 `RECIPIENT_OPTED_OUT` and 503 `messaging_not_enabled` still count.
+ * Other 403s (quiet hours, early DNC) and 429 are kept on purpose: the route
+ * can return them before the idempotency lookup, so a retry of a send whose
+ * success response was lost could otherwise get a fresh key and text twice.
+ * Network errors (status 0) and unmarked 5xx are ambiguous and keep the key.
+ */
+function isDefinitiveSendRejection(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const { status, body } = err as { status?: unknown; body?: unknown };
+  const payload = body && typeof body === 'object' ? (body as { reason?: unknown; code?: unknown; final?: unknown }) : {};
+  if (payload.final === true || payload.code === 'PROVIDER_REJECTED' || payload.reason === 'provider_rejected') {
+    return true;
+  }
+  if (typeof status !== 'number') return false;
+  if (status === 400 || status === 404 || status === 409) return true;
+  if (status === 403 && payload.code === 'RECIPIENT_OPTED_OUT') return true;
+  return status === 503 && payload.reason === 'messaging_not_enabled';
+}
+
 export default function SmsInbox() {
   const { user } = useAuth();
   const isManager = ['tenant_owner', 'operations_manager'].includes(user?.role ?? '');
@@ -183,6 +221,13 @@ export default function SmsInbox() {
   const [bulkAction, setBulkAction] = useState<string>('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const replyIdempotencyKeyRef = useRef<string | null>(null);
+  const replyInFlightRef = useRef(false);
+  const replyScheduledAt = showSchedule && scheduleDate ? scheduleDate : undefined;
+
+  useEffect(() => {
+    replyIdempotencyKeyRef.current = null;
+  }, [selectedConv?.id, replyText, replyScheduledAt]);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -303,21 +348,33 @@ export default function SmsInbox() {
     } catch {}
   };
 
+  /**
+   * Reuse the key on unchanged-draft retries after ambiguous failures; edits,
+   * success, or a definitive server rejection retire it.
+   * The in-flight ref blocks submits before React re-renders.
+   */
   const sendReply = async () => {
-    if (!replyText.trim() || !selectedConv) return;
+    if (!replyText.trim() || !selectedConv || replyInFlightRef.current) return;
+    replyInFlightRef.current = true;
     setSending(true);
     try {
       const payload: Record<string, unknown> = { body: replyText };
-      if (showSchedule && scheduleDate) payload.scheduledAt = scheduleDate;
+      if (replyScheduledAt) payload.scheduledAt = replyScheduledAt;
+      const idempotencyKey = replyIdempotencyKeyRef.current ??= createReplyIdempotencyKey();
 
-      const data = await api.post<{ message: Message }>(`/sms-inbox/threads/${selectedConv.id}/messages`, payload);
+      const data = await api.post<{ message: Message }>(`/sms-inbox/threads/${selectedConv.id}/messages`, payload, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+      });
+      replyIdempotencyKeyRef.current = null;
       setMessages(prev => [...prev, data.message]);
       setReplyText('');
       setShowSchedule(false);
       setScheduleDate('');
     } catch (err) {
+      if (isDefinitiveSendRejection(err)) replyIdempotencyKeyRef.current = null;
       setError(err instanceof Error ? err.message : 'Failed to send');
     } finally {
+      replyInFlightRef.current = false;
       setSending(false);
     }
   };

@@ -12,6 +12,7 @@ const a = vi.hoisted(() => ({
   writeAuditLogMock: vi.fn(),
   sendUserSms: vi.fn(),
   sendStoredSms: vi.fn(),
+  releaseIdempotency: vi.fn(),
   isOnDnc: vi.fn(),
   sms: {} as Record<string, ReturnType<typeof vi.fn>>,
 }));
@@ -31,6 +32,13 @@ vi.mock('../../../platform/actions/sms', () => ({
   sendUserSms: (...args: unknown[]) => a.sendUserSms(...args),
   sendStoredSms: (...args: unknown[]) => a.sendStoredSms(...args),
 }));
+vi.mock('./smsInboxSchemas', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./smsInboxSchemas')>();
+  return {
+    ...actual,
+    releaseSmsInboxReplyIdempotency: (...args: unknown[]) => a.releaseIdempotency(...args),
+  };
+});
 vi.mock('../../../platform/campaigns/DncService', () => ({
   isOnDnc: (...args: unknown[]) => a.isOnDnc(...args),
 }));
@@ -73,6 +81,7 @@ beforeEach(() => {
   a.writeAuditLogMock.mockReset().mockResolvedValue(undefined);
   a.sendUserSms.mockReset().mockResolvedValue({ ok: true, data: { messageId: 'm-sent', status: 'queued' } });
   a.sendStoredSms.mockReset();
+  a.releaseIdempotency.mockReset().mockResolvedValue(undefined);
   a.isOnDnc.mockReset().mockResolvedValue(false);
   a.sms.listConversations = vi.fn().mockResolvedValue({ conversations: [], total: 0 });
   a.sms.getConversation = vi.fn();
@@ -271,7 +280,7 @@ describe('POST /sms-inbox/threads/:id/messages', () => {
     a.poolQueryMock.mockResolvedValue({ rows: [{ phone_number: '+15555550100' }] });
     a.sendUserSms.mockResolvedValue({
       ok: false,
-      error: { code: 'RECIPIENT_OPTED_OUT', message: 'Recipient has opted out of SMS' },
+      error: { code: 'RECIPIENT_OPTED_OUT', message: 'Recipient has opted out of SMS', retryable: false },
     });
     const res = await request(app()).post('/sms-inbox/threads/cv1/messages').send({ body: 'Hi' });
     expect(res.status).toBe(403);
@@ -279,7 +288,87 @@ describe('POST /sms-inbox/threads/:id/messages', () => {
       error: 'Recipient has opted out of SMS',
       reason: 'recipient_opted_out',
       code: 'RECIPIENT_OPTED_OUT',
+      final: true,
     });
+    expect(a.sms.logActivity).not.toHaveBeenCalled();
+    expect(a.releaseIdempotency).not.toHaveBeenCalled();
+  });
+  it('releases the key after a chokepoint opt-out when an Idempotency-Key was sent', async () => {
+    a.sms.getConversation.mockResolvedValue(ownThread);
+    a.poolQueryMock.mockResolvedValue({ rows: [{ phone_number: '+15555550100' }] });
+    a.sendUserSms.mockResolvedValue({
+      ok: false,
+      error: { code: 'RECIPIENT_OPTED_OUT', message: 'Recipient has opted out of SMS', retryable: false },
+    });
+    const res = await request(app())
+      .post('/sms-inbox/threads/cv1/messages')
+      .set('Idempotency-Key', 'opt-out-retry')
+      .send({ body: 'Hi' });
+    expect(res.status).toBe(403);
+    expect(a.releaseIdempotency).toHaveBeenCalledWith('t1', smsInboxReplyIdempotencyKey('t1', 'cv1', 'opt-out-retry'));
+  });
+  it('marks a Twilio auth rejection final and releases the idempotency key', async () => {
+    a.sms.getConversation.mockResolvedValue(ownThread);
+    a.poolQueryMock.mockResolvedValue({ rows: [{ phone_number: '+15555550100' }] });
+    a.sendUserSms.mockResolvedValue({
+      ok: false,
+      error: {
+        code: 'UPSTREAM_UNAVAILABLE',
+        message: 'Twilio API error: 401 Authenticate',
+        retryable: false,
+      },
+    });
+    const res = await request(app())
+      .post('/sms-inbox/threads/cv1/messages')
+      .set('Idempotency-Key', 'auth-retry')
+      .send({ body: 'Thanks' });
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({
+      error: 'Failed to send message: Twilio API error: 401 Authenticate',
+      reason: 'provider_rejected',
+      code: 'PROVIDER_REJECTED',
+      final: true,
+    });
+    expect(a.releaseIdempotency).toHaveBeenCalledWith('t1', smsInboxReplyIdempotencyKey('t1', 'cv1', 'auth-retry'));
+    expect(a.sms.logActivity).not.toHaveBeenCalled();
+  });
+  it('does not release the key on IDEMPOTENCY_KEY_REUSED so a prior success stays replayable', async () => {
+    a.sms.getConversation.mockResolvedValue(ownThread);
+    a.poolQueryMock.mockResolvedValue({ rows: [{ phone_number: '+15555550100' }] });
+    a.sendUserSms.mockResolvedValue({
+      ok: false,
+      error: {
+        code: 'IDEMPOTENCY_KEY_REUSED',
+        message: 'Idempotency key was reused with a different payload',
+        retryable: false,
+      },
+    });
+    const res = await request(app())
+      .post('/sms-inbox/threads/cv1/messages')
+      .set('Idempotency-Key', 'owner-double-click')
+      .send({ body: 'A different reply' });
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({
+      reason: 'idempotency_key_reused',
+      code: 'IDEMPOTENCY_KEY_REUSED',
+      final: true,
+    });
+    expect(a.releaseIdempotency).not.toHaveBeenCalled();
+  });
+  it('returns 500 without a final marker for an ambiguous upstream failure and keeps the key', async () => {
+    a.sms.getConversation.mockResolvedValue(ownThread);
+    a.poolQueryMock.mockResolvedValue({ rows: [{ phone_number: '+15555550100' }] });
+    a.sendUserSms.mockResolvedValue({
+      ok: false,
+      error: { code: 'UPSTREAM_UNAVAILABLE', message: 'fetch failed', retryable: true },
+    });
+    const res = await request(app())
+      .post('/sms-inbox/threads/cv1/messages')
+      .set('Idempotency-Key', 'timeout-retry')
+      .send({ body: 'Thanks' });
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Failed to send message: fetch failed' });
+    expect(a.releaseIdempotency).not.toHaveBeenCalled();
     expect(a.sms.logActivity).not.toHaveBeenCalled();
   });
 });

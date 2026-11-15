@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z, type ZodError, type ZodType } from 'zod';
+import { defaultWithTenantTx } from '../../../platform/actions/core/runtime';
 import { SMS_MAX_BODY_CHARS } from '../../../platform/actions/sms';
 
 /** Max conversation ids accepted by POST /sms-inbox/bulk-update. */
@@ -200,6 +201,32 @@ export function smsInboxReplyIdempotencyKey(tenantId: string, threadId: string, 
   if (readable.length <= 256) return readable;
   const digest = createHash('sha256').update(readable).digest('hex');
   return `sms:inbox:${digest}`;
+}
+
+/**
+ * Drop a completed `sms.send` idempotency row so a later attempt can run.
+ * Used after a final provider rejection (the action runtime otherwise caches
+ * non-retryable failures and would replay them). Retryable / unknown outcomes
+ * are left to `runAction`, which already releases those keys.
+ *
+ * The DELETE is conditional on the row still being that final-rejection
+ * failure. Two concurrent requests can both replay the same cached failure;
+ * after one cleanup and a successful retry, a delayed DELETE-by-key would
+ * otherwise wipe the success and let another replay send twice.
+ */
+export async function releaseSmsInboxReplyIdempotency(tenantId: string, key: string): Promise<void> {
+  await defaultWithTenantTx(tenantId, (tx) =>
+    tx.query(
+      `DELETE FROM action_idempotency
+        WHERE tenant_id = $1 AND action = $2 AND key = $3
+          AND status = 'completed'
+          AND response->>'ok' = 'false'
+          AND response->'error'->>'retryable' = 'false'
+          AND COALESCE(response->'error'->>'code', '') NOT IN
+            ('IDEMPOTENCY_KEY_REUSED', 'VALIDATION_FAILED', 'FORBIDDEN')`,
+      [tenantId, 'sms.send', key],
+    ),
+  );
 }
 
 export function parseWrite<T>(

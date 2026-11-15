@@ -37,6 +37,7 @@ function fallbackMessageForStatus(status: number): string {
 
 export interface RequestOptions {
   signal?: AbortSignal;
+  headers?: Record<string, string>;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -108,12 +109,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  get: <T>(path: string, opts?: RequestOptions) => request<T>(path, { signal: opts?.signal }),
+  get: <T>(path: string, opts?: RequestOptions) => request<T>(path, { ...opts }),
   post: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
-    request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined, signal: opts?.signal }),
+    request<T>(path, { ...opts, method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
-    request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined, signal: opts?.signal }),
+    request<T>(path, { ...opts, method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown, opts?: RequestOptions) =>
-    request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined, signal: opts?.signal }),
-  delete: <T>(path: string, opts?: RequestOptions) => request<T>(path, { method: 'DELETE', signal: opts?.signal }),
+    request<T>(path, { ...opts, method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
+  delete: <T>(path: string, opts?: RequestOptions) => request<T>(path, { ...opts, method: 'DELETE' }),
 };
