@@ -338,11 +338,16 @@ describe('POST /sms-inbox/threads/:id/messages through the sms.send chokepoint',
     expect(smsFake.current!.transport.send).not.toHaveBeenCalled();
   });
 
-  it('reports a Twilio error as before (500 "Failed to send message: …")', async () => {
+  it('reports a final Twilio rejection as 422 provider_rejected', async () => {
     smsFake.current!.state.sendError = new TwilioApiError('Twilio API error: 400 Bad To', 400, 21604);
     const res = await send('Hi');
-    expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to send message: Twilio API error: 400 Bad To');
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({
+      error: 'Failed to send message: Twilio API error: 400 Bad To',
+      reason: 'provider_rejected',
+      code: 'PROVIDER_REJECTED',
+      final: true,
+    });
     expect(logActivityMock).not.toHaveBeenCalled();
   });
 

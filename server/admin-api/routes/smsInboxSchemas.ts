@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z, type ZodError, type ZodType } from 'zod';
+import { postgresActionStore } from '../../../platform/actions/core';
+import { defaultWithTenantTx } from '../../../platform/actions/core/runtime';
 import { SMS_MAX_BODY_CHARS } from '../../../platform/actions/sms';
 
 /** Max conversation ids accepted by POST /sms-inbox/bulk-update. */
@@ -200,6 +202,18 @@ export function smsInboxReplyIdempotencyKey(tenantId: string, threadId: string, 
   if (readable.length <= 256) return readable;
   const digest = createHash('sha256').update(readable).digest('hex');
   return `sms:inbox:${digest}`;
+}
+
+/**
+ * Drop a completed `sms.send` idempotency row so a later attempt can run.
+ * Used after a final provider rejection (the action runtime otherwise caches
+ * non-retryable failures and would replay them). Retryable / unknown outcomes
+ * are left to `runAction`, which already releases those keys.
+ */
+export async function releaseSmsInboxReplyIdempotency(tenantId: string, key: string): Promise<void> {
+  await defaultWithTenantTx(tenantId, (tx) =>
+    postgresActionStore.releaseIdempotency(tx, { tenantId, action: 'sms.send', key }),
+  );
 }
 
 export function parseWrite<T>(

@@ -6,6 +6,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import request from 'supertest';
+import type { ActionRuntime } from '../../../platform/actions/core/runtime';
+import { TwilioApiError } from '../../../platform/integrations/twilio/sender';
 import { smsInboxReplyIdempotencyKey } from './smsInboxSchemas';
 
 const queryMock = vi.fn();
@@ -46,6 +48,18 @@ vi.mock('../../../platform/actions/sms', async (importOriginal) => {
     sendUserSms: (req: Parameters<typeof actual.sendUserSms>[0]) => actual.sendUserSms(req, smsFake.current!.options),
     sendStoredSms: (req: Parameters<typeof actual.sendStoredSms>[0]) =>
       actual.sendStoredSms(req, smsFake.current!.options),
+  };
+});
+vi.mock('./smsInboxSchemas', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./smsInboxSchemas')>();
+  return {
+    ...actual,
+    releaseSmsInboxReplyIdempotency: async (tenantId: string, key: string) => {
+      const runtime = smsFake.current!.options.runtime as ActionRuntime;
+      await runtime.withTenantTx!(tenantId, (tx) =>
+        runtime.store!.releaseIdempotency(tx, { tenantId, action: 'sms.send', key }),
+      );
+    },
   };
 });
 import { createFakeSmsChokepoint } from '../../../platform/actions/sms/__fixtures__/fakeSmsChokepoint';
@@ -211,9 +225,49 @@ describe('POST /sms-inbox/threads/:id/messages through sms.send', () => {
       error: 'Recipient has opted out of SMS',
       reason: 'recipient_opted_out',
       code: 'RECIPIENT_OPTED_OUT',
+      final: true,
     });
     expect(smsFake.current!.transport.send).not.toHaveBeenCalled();
     expect(smsFake.current!.rows.size).toBe(0);
+    expect(logActivityMock).not.toHaveBeenCalled();
+  });
+
+  it('marks a Twilio auth rejection final and lets the same key send after credentials are fixed', async () => {
+    smsFake.current!.state.sendError = new TwilioApiError('Twilio API error: 401 Authenticate', 401, 20003);
+    const post = () =>
+      request(buildApp())
+        .post('/sms-inbox/threads/conv-1/messages')
+        .set('Idempotency-Key', 'auth-retry')
+        .send({ body: 'Thanks for booking' });
+
+    const first = await post();
+    expect(first.status).toBe(422);
+    expect(first.body).toMatchObject({
+      reason: 'provider_rejected',
+      code: 'PROVIDER_REJECTED',
+      final: true,
+    });
+    expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(1);
+    expect(logActivityMock).not.toHaveBeenCalled();
+
+    smsFake.current!.state.sendError = null;
+    const second = await post();
+    expect(second.status).toBe(200);
+    expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(2);
+    expect(second.body.message.body).toBe('Thanks for booking');
+  });
+
+  it('returns 500 without a final marker for an ambiguous Twilio failure', async () => {
+    smsFake.current!.state.sendError = new TwilioApiError('Twilio API error: 503 Service Unavailable', 503, null);
+    const res = await request(buildApp())
+      .post('/sms-inbox/threads/conv-1/messages')
+      .set('Idempotency-Key', 'timeout-retry')
+      .send({ body: 'Thanks for booking' });
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Failed to send message: Twilio API error: 503 Service Unavailable' });
+    expect(res.body.final).toBeUndefined();
+    expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(1);
     expect(logActivityMock).not.toHaveBeenCalled();
   });
 });

@@ -119,6 +119,12 @@ describe('SMS inbox composer idempotency', () => {
     [409, { error: 'Key reused', reason: 'idempotency_key_reused' }],
     [403, { error: 'Recipient opted out', reason: 'recipient_opted_out', code: 'RECIPIENT_OPTED_OUT' }],
     [503, { error: 'SMS service not configured', reason: 'messaging_not_enabled' }],
+    [422, {
+      error: 'Failed to send message: Twilio API error: 401 Authenticate',
+      reason: 'provider_rejected',
+      code: 'PROVIDER_REJECTED',
+      final: true,
+    }],
   ])('retires the key after a definitive %s rejection so a later retry can send', async (status, body) => {
     const rejection = Object.assign(new Error(String(body.error)), { status, body });
     apiMock.post
@@ -140,8 +146,9 @@ describe('SMS inbox composer idempotency', () => {
     [403, { error: 'Outside quiet hours', reason: 'sms_quiet_hours' }],
     [429, { error: 'Too many messages to this number; try again later' }],
     [500, { error: 'Failed to send message' }],
+    [500, { error: 'Failed to send message: fetch failed' }],
     [503, { error: 'Service Unavailable' }],
-  ])('keeps the key after an ambiguous %s failure', async (status, body) => {
+  ])('keeps the key after an ambiguous %s failure (%j)', async (status, body) => {
     const failure = Object.assign(new Error('failed'), { status, body });
     apiMock.post
       .mockRejectedValueOnce(failure)

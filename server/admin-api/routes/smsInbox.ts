@@ -29,6 +29,7 @@ import {
   createTemplateSchema,
   idempotencyKeyHeaderSchema,
   parseWrite,
+  releaseSmsInboxReplyIdempotency,
   sendMessageSchema,
   smsInboxReplyIdempotencyKey,
   substituteTemplateSchema,
@@ -41,8 +42,13 @@ import {
 const router = Router();
 const logger = createLogger('ADMIN_SMS_INBOX');
 
+/** True when `sms.send` is sure nothing went out (auth, permission, invalid number, …). */
+function isFinalSmsSendFailure(error: { retryable?: boolean }): boolean {
+  return error.retryable === false;
+}
+
 /** HTTP response for an `sms.send` failure on an inbox reply. */
-function smsSendFailureResponse(error: { code: string; message: string }): {
+function smsSendFailureResponse(error: { code: string; message: string; retryable?: boolean }): {
   status: number;
   payload: Record<string, unknown>;
 } {
@@ -50,19 +56,38 @@ function smsSendFailureResponse(error: { code: string; message: string }): {
     case 'RECIPIENT_OPTED_OUT':
       return {
         status: 403,
-        payload: { error: error.message, reason: 'recipient_opted_out', code: error.code },
+        payload: { error: error.message, reason: 'recipient_opted_out', code: error.code, final: true },
       };
     case 'MESSAGING_NOT_ENABLED':
-      return { status: 503, payload: { error: 'SMS service not configured', reason: 'messaging_not_enabled' } };
+      return {
+        status: 503,
+        payload: { error: 'SMS service not configured', reason: 'messaging_not_enabled', final: true },
+      };
     case 'RATE_LIMITED':
       return { status: 429, payload: { error: 'Too many messages to this number; try again later' } };
     case 'INVALID_NUMBER':
     case 'VALIDATION_FAILED':
-      return { status: 400, payload: { error: error.message } };
+      return { status: 400, payload: { error: error.message, final: true } };
     case 'IDEMPOTENCY_KEY_REUSED':
-      return { status: 409, payload: { error: error.message, reason: 'idempotency_key_reused', code: error.code } };
+      return {
+        status: 409,
+        payload: { error: error.message, reason: 'idempotency_key_reused', code: error.code, final: true },
+      };
     case 'FORBIDDEN':
-      return { status: 403, payload: { error: error.message } };
+      return { status: 403, payload: { error: error.message, final: true } };
+    case 'UPSTREAM_UNAVAILABLE':
+      if (isFinalSmsSendFailure(error)) {
+        return {
+          status: 422,
+          payload: {
+            error: `Failed to send message: ${error.message}`,
+            reason: 'provider_rejected',
+            code: 'PROVIDER_REJECTED',
+            final: true,
+          },
+        };
+      }
+      return { status: 500, payload: { error: `Failed to send message: ${error.message}` } };
     default:
       return { status: 500, payload: { error: `Failed to send message: ${error.message}` } };
   }
@@ -352,6 +377,20 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
       if (!sent.ok) {
         const { status, payload } = smsSendFailureResponse(sent.error);
         logger.warn('Inbox SMS not sent', { tenantId, conversationId: id, code: sent.error.code });
+        // Non-retryable chokepoint failures are finalized under the key. Drop
+        // that row so a later attempt (fresh credentials, START, …) can run.
+        if (idempotencyKey && isFinalSmsSendFailure(sent.error)) {
+          try {
+            await releaseSmsInboxReplyIdempotency(tenantId, idempotencyKey);
+          } catch (releaseErr) {
+            logger.warn('Failed to release inbox reply idempotency key after a final send rejection', {
+              tenantId,
+              conversationId: id,
+              code: sent.error.code,
+              error: String(releaseErr),
+            });
+          }
+        }
         return res.status(status).json(payload);
       }
       const message = await SmsService.getMessage(tenantId, sent.data.messageId);

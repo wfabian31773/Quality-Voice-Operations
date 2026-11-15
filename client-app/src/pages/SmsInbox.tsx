@@ -164,24 +164,28 @@ function createReplyIdempotencyKey(): string {
  * True when the server answered with a definitive "not sent" rejection for
  * this exact draft. The action runtime caches non-retryable failures under the
  * idempotency key, so reusing the key after one of these would replay the old
- * failure (e.g. after an admin enables messaging).
+ * failure (e.g. after credentials are fixed). The inbox route also releases
+ * that row and sets `final: true` on these responses.
  *
- * Only 400 / 404 / 409, 403 `RECIPIENT_OPTED_OUT` (from the chokepoint) and
- * 503 `messaging_not_enabled` count. Other 403s (quiet hours, early DNC) and
- * 429 are kept on purpose: the route can return them
- * before the idempotency lookup, so a retry of a send whose success response
- * was lost could otherwise get a fresh key and text the customer twice later.
- * Network errors (status 0) and other 5xx are ambiguous and keep the key.
+ * `final: true` / `PROVIDER_REJECTED` covers a Twilio auth/permission
+ * rejection that used to look like a 500 `UPSTREAM_UNAVAILABLE`. 400 / 404 /
+ * 409, 403 `RECIPIENT_OPTED_OUT` and 503 `messaging_not_enabled` still count.
+ * Other 403s (quiet hours, early DNC) and 429 are kept on purpose: the route
+ * can return them before the idempotency lookup, so a retry of a send whose
+ * success response was lost could otherwise get a fresh key and text twice.
+ * Network errors (status 0) and unmarked 5xx are ambiguous and keep the key.
  */
 function isDefinitiveSendRejection(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
   const { status, body } = err as { status?: unknown; body?: unknown };
+  const payload = body && typeof body === 'object' ? (body as { reason?: unknown; code?: unknown; final?: unknown }) : {};
+  if (payload.final === true || payload.code === 'PROVIDER_REJECTED' || payload.reason === 'provider_rejected') {
+    return true;
+  }
   if (typeof status !== 'number') return false;
   if (status === 400 || status === 404 || status === 409) return true;
-  const { reason, code } = body && typeof body === 'object' ? (body as { reason?: unknown; code?: unknown }) : {};
-  // The chokepoint's opt-out rejection comes after the idempotency lookup and is cached.
-  if (status === 403 && code === 'RECIPIENT_OPTED_OUT') return true;
-  return status === 503 && reason === 'messaging_not_enabled';
+  if (status === 403 && payload.code === 'RECIPIENT_OPTED_OUT') return true;
+  return status === 503 && payload.reason === 'messaging_not_enabled';
 }
 
 export default function SmsInbox() {
