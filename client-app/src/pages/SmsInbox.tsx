@@ -161,17 +161,22 @@ function createReplyIdempotencyKey(): string {
 }
 
 /**
- * True when the server answered with a definitive "not sent" rejection. The
- * action runtime caches non-retryable failures under the idempotency key, so
- * reusing the key after one of these would replay the old failure (e.g. after
- * an admin enables messaging). Network errors (status 0) and other 5xx stay
- * ambiguous: the text may have gone out, so the key is kept for the retry.
+ * True when the server answered with a definitive "not sent" rejection for
+ * this exact draft. The action runtime caches non-retryable failures under the
+ * idempotency key, so reusing the key after one of these would replay the old
+ * failure (e.g. after an admin enables messaging).
+ *
+ * Only 400 / 404 / 409 and 503 `messaging_not_enabled` count. 403 (quiet
+ * hours, DNC, opt-out) and 429 are kept on purpose: the route can return them
+ * before the idempotency lookup, so a retry of a send whose success response
+ * was lost could otherwise get a fresh key and text the customer twice later.
+ * Network errors (status 0) and other 5xx are ambiguous and keep the key.
  */
 function isDefinitiveSendRejection(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
   const { status, body } = err as { status?: unknown; body?: unknown };
   if (typeof status !== 'number') return false;
-  if (status >= 400 && status < 500) return true;
+  if (status === 400 || status === 404 || status === 409) return true;
   const reason = body && typeof body === 'object' ? (body as { reason?: unknown }).reason : undefined;
   return status === 503 && reason === 'messaging_not_enabled';
 }

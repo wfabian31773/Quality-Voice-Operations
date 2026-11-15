@@ -136,6 +136,8 @@ describe('SMS inbox composer idempotency', () => {
 
   it.each([
     [0, null],
+    [403, { error: 'Outside quiet hours', reason: 'sms_quiet_hours' }],
+    [429, { error: 'Too many messages to this number; try again later' }],
     [500, { error: 'Failed to send message' }],
     [503, { error: 'Service Unavailable' }],
   ])('keeps the key after an ambiguous %s failure', async (status, body) => {
