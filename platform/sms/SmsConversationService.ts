@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { SMS_QUIET_HOURS_ACTIVITY_ACTION } from './SmsActivityActions';
 import { getPlatformPool, withTenantContext } from '../db';
 import { createLogger } from '../core/logger';
 
@@ -315,7 +316,7 @@ export async function listConversations(
             SELECT 1 FROM sms_conversation_activity_log l
             WHERE l.tenant_id = m.tenant_id
               AND l.conversation_id = m.conversation_id
-              AND l.action = 'message_deferred'
+              AND l.action IN ('message_deferred', '${SMS_QUIET_HOURS_ACTIVITY_ACTION}')
               AND l.details->>'messageId' = m.id
               AND l.details->>'reason' = 'sms_quiet_hours'
           )
@@ -327,7 +328,7 @@ export async function listConversations(
             SELECT 1 FROM sms_conversation_activity_log l
             WHERE l.tenant_id = m.tenant_id
               AND l.conversation_id = m.conversation_id
-              AND l.action = 'message_deferred'
+              AND l.action IN ('message_deferred', '${SMS_QUIET_HOURS_ACTIVITY_ACTION}')
               AND l.details->>'messageId' = m.id
               AND l.details->>'reason' = 'sms_quiet_hours'
           )
@@ -1161,7 +1162,7 @@ export async function getInboxCounts(tenantId: string): Promise<Record<string, n
            SELECT 1 FROM sms_conversation_activity_log l
            WHERE l.tenant_id = m.tenant_id
              AND l.conversation_id = m.conversation_id
-             AND l.action = 'message_deferred'
+             AND l.action IN ('message_deferred', '${SMS_QUIET_HOURS_ACTIVITY_ACTION}')
              AND l.details->>'messageId' = m.id
              AND l.details->>'reason' = 'sms_quiet_hours'
          )`,
@@ -1184,7 +1185,7 @@ export interface DeferredSmsEntry {
 /**
  * List every outbound SMS the dispatcher currently has parked because the
  * recipient was inside the TCPA quiet-hours window. We pick the most recent
- * `message_deferred` activity-log row per message so a re-defer (e.g. DST
+ * quiet-hours activity-log row per message so a re-defer (e.g. DST
  * boundary, or two consecutive nights) shows the latest target time. The
  * SMS Inbox UI uses this to render the per-conversation "deferred until …"
  * badge and to drive the "deferred" filter — task #989.
@@ -1202,7 +1203,7 @@ export async function listDeferredMessages(tenantId: string): Promise<DeferredSm
        JOIN sms_conversation_activity_log l
          ON l.tenant_id = m.tenant_id
         AND l.conversation_id = m.conversation_id
-        AND l.action = 'message_deferred'
+        AND l.action IN ('message_deferred', '${SMS_QUIET_HOURS_ACTIVITY_ACTION}')
         AND l.details->>'messageId' = m.id
         AND l.details->>'reason' = 'sms_quiet_hours'
        WHERE m.tenant_id = $1 AND m.status = 'scheduled'
