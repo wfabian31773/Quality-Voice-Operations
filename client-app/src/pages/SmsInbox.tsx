@@ -166,8 +166,9 @@ function createReplyIdempotencyKey(): string {
  * idempotency key, so reusing the key after one of these would replay the old
  * failure (e.g. after an admin enables messaging).
  *
- * Only 400 / 404 / 409 and 503 `messaging_not_enabled` count. 403 (quiet
- * hours, DNC, opt-out) and 429 are kept on purpose: the route can return them
+ * Only 400 / 404 / 409, 403 `RECIPIENT_OPTED_OUT` (from the chokepoint) and
+ * 503 `messaging_not_enabled` count. Other 403s (quiet hours, early DNC) and
+ * 429 are kept on purpose: the route can return them
  * before the idempotency lookup, so a retry of a send whose success response
  * was lost could otherwise get a fresh key and text the customer twice later.
  * Network errors (status 0) and other 5xx are ambiguous and keep the key.
@@ -177,7 +178,9 @@ function isDefinitiveSendRejection(err: unknown): boolean {
   const { status, body } = err as { status?: unknown; body?: unknown };
   if (typeof status !== 'number') return false;
   if (status === 400 || status === 404 || status === 409) return true;
-  const reason = body && typeof body === 'object' ? (body as { reason?: unknown }).reason : undefined;
+  const { reason, code } = body && typeof body === 'object' ? (body as { reason?: unknown; code?: unknown }) : {};
+  // The chokepoint's opt-out rejection comes after the idempotency lookup and is cached.
+  if (status === 403 && code === 'RECIPIENT_OPTED_OUT') return true;
   return status === 503 && reason === 'messaging_not_enabled';
 }
 

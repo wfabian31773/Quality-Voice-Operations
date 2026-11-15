@@ -117,6 +117,7 @@ describe('SMS inbox composer idempotency', () => {
   it.each([
     [400, { error: 'Invalid number' }],
     [409, { error: 'Key reused', reason: 'idempotency_key_reused' }],
+    [403, { error: 'Recipient opted out', reason: 'recipient_opted_out', code: 'RECIPIENT_OPTED_OUT' }],
     [503, { error: 'SMS service not configured', reason: 'messaging_not_enabled' }],
   ])('retires the key after a definitive %s rejection so a later retry can send', async (status, body) => {
     const rejection = Object.assign(new Error(String(body.error)), { status, body });
