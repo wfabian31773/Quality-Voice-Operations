@@ -114,6 +114,43 @@ function keyForCall(index: number): string {
 }
 
 describe('SMS inbox composer idempotency', () => {
+  it.each([
+    [400, { error: 'Invalid number' }],
+    [409, { error: 'Key reused', reason: 'idempotency_key_reused' }],
+    [503, { error: 'SMS service not configured', reason: 'messaging_not_enabled' }],
+  ])('retires the key after a definitive %s rejection so a later retry can send', async (status, body) => {
+    const rejection = Object.assign(new Error(String(body.error)), { status, body });
+    apiMock.post
+      .mockRejectedValueOnce(rejection)
+      .mockImplementation(async () => sentResponse());
+    const input = await openComposer();
+
+    await submit(input);
+    const firstKey = keyForCall(0);
+    expect(input.value).toBe('Thanks for your message');
+
+    await submit(input);
+    expect(apiMock.post).toHaveBeenCalledTimes(2);
+    expect(keyForCall(1)).not.toBe(firstKey);
+  });
+
+  it.each([
+    [0, null],
+    [500, { error: 'Failed to send message' }],
+    [503, { error: 'Service Unavailable' }],
+  ])('keeps the key after an ambiguous %s failure', async (status, body) => {
+    const failure = Object.assign(new Error('failed'), { status, body });
+    apiMock.post
+      .mockRejectedValueOnce(failure)
+      .mockImplementation(async () => sentResponse());
+    const input = await openComposer();
+
+    await submit(input);
+    const firstKey = keyForCall(0);
+    await submit(input);
+    expect(keyForCall(1)).toBe(firstKey);
+  });
+
   it.each([undefined, scheduledAt])('reuses the header after failure and rotates it after success (schedule: %s)', async (schedule) => {
     apiMock.post
       .mockRejectedValueOnce(new Error('Connection lost'))
