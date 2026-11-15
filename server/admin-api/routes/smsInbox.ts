@@ -47,6 +47,18 @@ function isFinalSmsSendFailure(error: { retryable?: boolean }): boolean {
   return error.retryable === false;
 }
 
+/**
+ * Drop the idempotency row only when *this* attempt was cached as a failed
+ * send. `IDEMPOTENCY_KEY_REUSED` means a different payload already owns the
+ * key (often a success); deleting it would let a later retry of the original
+ * body double-send. Pre-claim errors (`VALIDATION_FAILED`, `FORBIDDEN`) never
+ * wrote this attempt's row either, so a DELETE would hit the previous owner.
+ */
+function shouldReleaseInboxReplyIdempotency(error: { code: string; retryable?: boolean }): boolean {
+  if (!isFinalSmsSendFailure(error)) return false;
+  return error.code !== 'IDEMPOTENCY_KEY_REUSED' && error.code !== 'VALIDATION_FAILED' && error.code !== 'FORBIDDEN';
+}
+
 /** HTTP response for an `sms.send` failure on an inbox reply. */
 function smsSendFailureResponse(error: { code: string; message: string; retryable?: boolean }): {
   status: number;
@@ -379,7 +391,7 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
         logger.warn('Inbox SMS not sent', { tenantId, conversationId: id, code: sent.error.code });
         // Non-retryable chokepoint failures are finalized under the key. Drop
         // that row so a later attempt (fresh credentials, START, …) can run.
-        if (idempotencyKey && isFinalSmsSendFailure(sent.error)) {
+        if (idempotencyKey && shouldReleaseInboxReplyIdempotency(sent.error)) {
           try {
             await releaseSmsInboxReplyIdempotency(tenantId, idempotencyKey);
           } catch (releaseErr) {

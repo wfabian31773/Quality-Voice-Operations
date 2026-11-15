@@ -332,6 +332,29 @@ describe('POST /sms-inbox/threads/:id/messages', () => {
     expect(a.releaseIdempotency).toHaveBeenCalledWith('t1', smsInboxReplyIdempotencyKey('t1', 'cv1', 'auth-retry'));
     expect(a.sms.logActivity).not.toHaveBeenCalled();
   });
+  it('does not release the key on IDEMPOTENCY_KEY_REUSED so a prior success stays replayable', async () => {
+    a.sms.getConversation.mockResolvedValue(ownThread);
+    a.poolQueryMock.mockResolvedValue({ rows: [{ phone_number: '+15555550100' }] });
+    a.sendUserSms.mockResolvedValue({
+      ok: false,
+      error: {
+        code: 'IDEMPOTENCY_KEY_REUSED',
+        message: 'Idempotency key was reused with a different payload',
+        retryable: false,
+      },
+    });
+    const res = await request(app())
+      .post('/sms-inbox/threads/cv1/messages')
+      .set('Idempotency-Key', 'owner-double-click')
+      .send({ body: 'A different reply' });
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({
+      reason: 'idempotency_key_reused',
+      code: 'IDEMPOTENCY_KEY_REUSED',
+      final: true,
+    });
+    expect(a.releaseIdempotency).not.toHaveBeenCalled();
+  });
   it('returns 500 without a final marker for an ambiguous upstream failure and keeps the key', async () => {
     a.sms.getConversation.mockResolvedValue(ownThread);
     a.poolQueryMock.mockResolvedValue({ rows: [{ phone_number: '+15555550100' }] });

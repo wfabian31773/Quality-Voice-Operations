@@ -257,6 +257,29 @@ describe('POST /sms-inbox/threads/:id/messages through sms.send', () => {
     expect(second.body.message.body).toBe('Thanks for booking');
   });
 
+  it('keeps a successful send replayable after a same-key different-body conflict', async () => {
+    const send = (body: string) =>
+      request(buildApp())
+        .post('/sms-inbox/threads/conv-1/messages')
+        .set('Idempotency-Key', 'owner-double-click')
+        .send({ body });
+
+    const first = await send('Thanks for booking');
+    expect(first.status).toBe(200);
+    const conflict = await send('A different reply');
+    expect(conflict.status).toBe(409);
+    expect(conflict.body).toMatchObject({
+      reason: 'idempotency_key_reused',
+      code: 'IDEMPOTENCY_KEY_REUSED',
+      final: true,
+    });
+
+    const replay = await send('Thanks for booking');
+    expect(replay.status).toBe(200);
+    expect(replay.body.message.id).toBe(first.body.message.id);
+    expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(1);
+  });
+
   it('returns 500 without a final marker for an ambiguous Twilio failure', async () => {
     smsFake.current!.state.sendError = new TwilioApiError('Twilio API error: 503 Service Unavailable', 503, null);
     const res = await request(buildApp())
