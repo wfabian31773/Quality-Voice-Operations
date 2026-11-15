@@ -8,6 +8,7 @@ import { getPlatformPool } from '../../../platform/db';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import * as SmsService from '../../../platform/sms/SmsConversationService';
+import { SMS_QUIET_HOURS_ACTIVITY_ACTION } from '../../../platform/sms/SmsActivityActions';
 import {
   evaluateSmsQuietHoursForTenant,
   formatSmsQuietHoursWindow,
@@ -1031,12 +1032,17 @@ export async function processScheduledMessages(): Promise<void> {
             `UPDATE sms_messages SET status = 'scheduled', scheduled_at = $1 WHERE id = $2 AND tenant_id = $3`,
             [deferUntil, msg.id, msg.tenantId],
           );
-          await SmsService.logActivity(msg.tenantId, msg.conversationId, 'message_deferred', null, null, {
-            messageId: msg.id,
-            reason: 'sms_quiet_hours',
-            recipientTimezone: quietHours.timezone,
-            deferredUntil: deferUntil.toISOString(),
-          });
+          try {
+            await SmsService.logActivity(msg.tenantId, msg.conversationId, SMS_QUIET_HOURS_ACTIVITY_ACTION, null, null, {
+              messageId: msg.id,
+              reason: 'sms_quiet_hours',
+              deferred: true,
+              recipientTimezone: quietHours.timezone,
+              deferredUntil: deferUntil.toISOString(),
+            });
+          } catch {
+            logger.warn('Failed to log scheduled SMS deferral', { tenantId: msg.tenantId, messageId: msg.id });
+          }
           logger.info('Scheduled SMS deferred — outside TCPA quiet hours', {
             tenantId: msg.tenantId,
             messageId: msg.id,
@@ -1071,11 +1077,16 @@ export async function processScheduledMessages(): Promise<void> {
         }
         if (sent.data.status === 'deferred_quiet_hours') {
           // The chokepoint stored the deferral on the row; its release job sends it.
-          await SmsService.logActivity(msg.tenantId, msg.conversationId, 'message_deferred', null, null, {
-            messageId: msg.id,
-            reason: 'sms_quiet_hours',
-            deferredUntil: sent.data.deferredUntil,
-          });
+          try {
+            await SmsService.logActivity(msg.tenantId, msg.conversationId, SMS_QUIET_HOURS_ACTIVITY_ACTION, null, null, {
+              messageId: msg.id,
+              reason: 'sms_quiet_hours',
+              deferred: true,
+              deferredUntil: sent.data.deferredUntil,
+            });
+          } catch {
+            logger.warn('Failed to log scheduled SMS deferral', { tenantId: msg.tenantId, messageId: msg.id });
+          }
           continue;
         }
 

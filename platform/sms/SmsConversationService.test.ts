@@ -12,7 +12,7 @@ import {
   listConversations, getConversation, updateConversation, markConversationRead, listMessages,
   addInternalNote, listInternalNotes, createCannedResponse, listCannedResponses, updateCannedResponse,
   deleteCannedResponse, substituteVariables, logActivity, listActivityLog, getConsentHistory,
-  getInboxCounts, bulkUpdateConversations,
+  getInboxCounts, bulkUpdateConversations, listDeferredMessages,
 } from './SmsConversationService';
 
 // Build a SQL-dispatching query handler. Transaction control + the
@@ -168,6 +168,25 @@ describe('getInboxCounts', () => {
     ]);
     const counts = await getInboxCounts('t1');
     expect(counts).toMatchObject({ open: 3, closed: 1, unread: 2, deferred: 5 });
+  });
+});
+
+describe('quiet-hours deferred activity readers', () => {
+  it('accepts legacy and schema-compatible quiet-hours activity in all four deferred queries', async () => {
+    await listConversations('t1', { deferredOnly: true });
+    await getInboxCounts('t1');
+    await listDeferredMessages('t1');
+
+    const queries = a.clientQueryMock.mock.calls
+      .map(([sql]) => String(sql))
+      .filter((sql) => sql.includes('sms_conversation_activity_log l'));
+    expect(queries).toHaveLength(4);
+    for (const sql of queries) {
+      expect(sql).toContain("l.action IN ('message_deferred', 'message_scheduled')");
+      expect(sql).toContain("l.details->>'reason' = 'sms_quiet_hours'");
+      expect(sql).toContain("l.details->>'messageId' = m.id");
+      expect(sql).toContain("m.status = 'scheduled'");
+    }
   });
 });
 

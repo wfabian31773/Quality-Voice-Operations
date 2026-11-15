@@ -29,5 +29,5 @@ Not covered here (other PRs / later): inbound STOP/START/HELP and spoofed webhoo
 - Replaying a reply with a key writes a second `message_sent` activity row (the SMS is not resent). Skip activity on chokepoint replay if that becomes noisy.
 - Notes / template / rule writes are not keyed for HTTP idempotency (only replies go through `sms.send`).
 - `PUT /sms-inbox/compliance-settings` and `POST /sms-inbox/ai-draft` are outside this validation pass.
-- `message_deferred` activity rows used by the scheduler are not in `sms_activity_action_check` (pre-existing; needs a migration if Postgres enforces it).
+- Quiet-hours deferrals are logged as `message_scheduled` with `details.reason = 'sms_quiet_hours'` and `details.deferred = true`; readers accept both `message_scheduled` and legacy `message_deferred` rows with that reason.
 - Extracting inbox writes into `sms.reply` / `sms.assign` / `sms.close` / `sms.add_note` actions (tools-spec §2.4) is still the larger adapter split.

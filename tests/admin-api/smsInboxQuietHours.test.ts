@@ -37,10 +37,11 @@ vi.mock('../../platform/db', () => ({
   withPrivilegedClient: vi.fn(),
 }));
 
+const loggerWarnMock = vi.hoisted(() => vi.fn());
 vi.mock('../../platform/core/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
-    warn: vi.fn(),
+    warn: loggerWarnMock,
     error: vi.fn(),
     debug: vi.fn(),
   }),
@@ -152,6 +153,7 @@ function buildApp(): express.Express {
 }
 
 beforeEach(() => {
+  loggerWarnMock.mockReset();
   queryMock.mockReset();
   releaseMock.mockReset();
   connectMock.mockClear();
@@ -385,13 +387,17 @@ describe('POST /sms-inbox/threads/:id/messages through the sms.send chokepoint',
 });
 
 describe('processScheduledMessages quiet-hours deferral', () => {
-  it("updates the row to status='scheduled' with a future scheduled_at instead of failing", async () => {
+  it.each([
+    { name: "updates the row to status='scheduled' with a future scheduled_at instead of failing", activityFails: false },
+    { name: 'does not mark a quiet-hours deferred message failed when logActivity rejects', activityFails: true },
+  ])('$name', async ({ activityFails }) => {
     // 2026-04-28 02:00 UTC = 22:00 Eastern → recipient is past the SMS
     // quiet-hours window; the dispatcher must defer the row, not mark
     // it failed.
     vi.useFakeTimers();
     const now = new Date(Date.UTC(2026, 3, 28, 2, 0));
     vi.setSystemTime(now);
+    if (activityFails) logActivityMock.mockRejectedValueOnce(new Error('Activity insert failed'));
 
     claimDueScheduledMessagesMock.mockResolvedValue([
       {
@@ -478,15 +484,24 @@ describe('processScheduledMessages quiet-hours deferral', () => {
     expect(logActivityMock).toHaveBeenCalledWith(
       'tenant-1',
       'conv-1',
-      'message_deferred',
+      'message_scheduled',
       null,
       null,
       expect.objectContaining({
         messageId: 'msg-1',
         reason: 'sms_quiet_hours',
+        deferred: true,
         recipientTimezone: 'America/New_York',
+        deferredUntil: deferUntil.toISOString(),
       }),
     );
+    expect(smsFake.current!.transport.send).not.toHaveBeenCalled();
+    if (activityFails) {
+      expect(loggerWarnMock).toHaveBeenCalledExactlyOnceWith('Failed to log scheduled SMS deferral', {
+        tenantId: 'tenant-1',
+        messageId: 'msg-1',
+      });
+    }
   });
 
   it('still dispatches scheduled messages when the recipient is inside their window', async () => {
@@ -619,6 +634,35 @@ describe('processScheduledMessages through the sms.send chokepoint', () => {
       scheduledAt,
       metadata: {},
     });
+  });
+
+  it.each([false, true])('preserves chokepoint quiet-hours deferral when activity logging rejects: %s', async (activityFails) => {
+    // Dispatch-time check allows the send, but the chokepoint recheck defers it.
+    smsFake.current!.state.quietHoursAllowed = false;
+    if (activityFails) logActivityMock.mockRejectedValueOnce(new Error('Activity insert failed'));
+
+    await processScheduledMessages();
+
+    const fake = smsFake.current!;
+    expect(fake.transport.send).not.toHaveBeenCalled();
+    expect(fake.rows.get('msg-1')).toMatchObject({
+      status: 'deferred_quiet_hours',
+      scheduledAt: new Date(Date.UTC(2026, 3, 29, 1, 0)),
+    });
+    expect(fake.rows.size).toBe(1);
+    expect(updateMessageStatusMock).not.toHaveBeenCalled();
+    expect(logActivityMock).toHaveBeenCalledExactlyOnceWith('tenant-1', 'conv-1', 'message_scheduled', null, null, {
+      messageId: 'msg-1',
+      reason: 'sms_quiet_hours',
+      deferred: true,
+      deferredUntil: '2026-04-29T01:00:00.000Z',
+    });
+    if (activityFails) {
+      expect(loggerWarnMock).toHaveBeenCalledExactlyOnceWith('Failed to log scheduled SMS deferral', {
+        tenantId: 'tenant-1',
+        messageId: 'msg-1',
+      });
+    }
   });
 
   it('does not text an opted-out recipient; marks the message failed with the suppression activity', async () => {
