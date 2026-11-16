@@ -7,12 +7,15 @@ vi.mock('../db', () => ({
   withTenantContext: async (_c: unknown, _t: string, cb: () => Promise<void>) => cb(),
 }));
 vi.mock('../core/logger', () => ({ createLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }) }));
+vi.mock('./SmsQuietHours', () => ({
+  evaluateSmsQuietHoursForTenant: vi.fn(async () => ({ allowed: true })),
+}));
 
 import {
   listConversations, getConversation, updateConversation, markConversationRead, listMessages,
   addInternalNote, listInternalNotes, createCannedResponse, listCannedResponses, updateCannedResponse,
   deleteCannedResponse, substituteVariables, logActivity, listActivityLog, getConsentHistory,
-  getInboxCounts, bulkUpdateConversations, listDeferredMessages,
+  getInboxCounts, bulkUpdateConversations, listDeferredMessages, saveMessage,
 } from './SmsConversationService';
 
 // Build a SQL-dispatching query handler. Transaction control + the
@@ -95,6 +98,29 @@ describe('listMessages', () => {
     const res = await listMessages('t1', 'cv1');
     expect(res.total).toBe(1);
     expect(res.messages[0]).toMatchObject({ id: 'm1', direction: 'inbound', body: 'hi' });
+  });
+});
+
+describe('saveMessage', () => {
+  it('uses the supplied tenant transaction for the scheduled row and conversation preview', async () => {
+    const scheduledAt = new Date('2026-11-20T18:00:00Z');
+    const tx = {
+      query: vi.fn().mockResolvedValue({ rows: [] }).mockResolvedValueOnce({ rows: [{
+        id: 'scheduled-1', tenant_id: 't1', conversation_id: 'cv1', direction: 'outbound',
+        from_number: '+15555550100', to_number: '+15555550142', body: 'Thanks',
+        status: 'scheduled', scheduled_at: scheduledAt, created_at: '2026-11-15T18:00:00Z',
+      }] }),
+    };
+    const message = await saveMessage('t1', 'cv1', {
+      direction: 'outbound', fromNumber: '+15555550100', toNumber: '+15555550142',
+      body: 'Thanks', status: 'scheduled', scheduledAt,
+    }, tx);
+    expect(message).toMatchObject({ id: 'scheduled-1', status: 'scheduled', scheduledAt });
+    expect(a.clientQueryMock).not.toHaveBeenCalled();
+    expect(a.releaseMock).not.toHaveBeenCalled();
+    expect(tx.query).toHaveBeenCalledTimes(2);
+    expect(tx.query.mock.calls[0][0]).toContain('INSERT INTO sms_messages');
+    expect(tx.query.mock.calls[1][0]).toContain('UPDATE sms_conversations');
   });
 });
 

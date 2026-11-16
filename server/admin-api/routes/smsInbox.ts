@@ -4,7 +4,10 @@ import type { ZodType } from 'zod';
 import { requireAuth } from '../middleware/auth';
 import { requireMiniSystemWrite } from '../middleware/rbac';
 import { requireRole } from '../middleware/rbac';
-import { getPlatformPool } from '../../../platform/db';
+import { getPlatformPool, withTenantClient } from '../../../platform/db';
+import { requestHash } from '../../../platform/actions/core/hash';
+import { postgresActionStore } from '../../../platform/actions/core/postgresStore';
+import { IDEMPOTENCY_TTL_MS } from '../../../platform/actions/core/types';
 import { createLogger } from '../../../platform/core/logger';
 import { writeAuditLog, extractIp } from '../../../platform/audit/AuditService';
 import * as SmsService from '../../../platform/sms/SmsConversationService';
@@ -425,14 +428,59 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
 
       return res.json({ message });
     } else {
-      const message = await SmsService.saveMessage(tenantId, id, {
-        direction: 'outbound',
+      const scheduledMessage = {
+        direction: 'outbound' as const,
         fromNumber,
         toNumber: conv.remoteNumber,
         body,
         status: 'scheduled',
         scheduledAt: schedDate,
-      });
+      };
+      let message: SmsService.SmsMessage;
+      if (idempotencyKey) {
+        const key = idempotencyKey;
+        const scheduled = await withTenantClient(tenantId, async (tx) => {
+          const identity = { tenantId, action: 'sms.inbox.schedule', key };
+          const now = new Date();
+          // The claim, SMS row, conversation preview, and completion commit
+          // together. A concurrent INSERT waits for this transaction before
+          // beginIdempotency locks and reads the completed result.
+          const claim = await postgresActionStore.beginIdempotency(tx, {
+            ...identity,
+            requestHash: requestHash({ threadId: id, body, scheduledAt: schedDate.toISOString() }),
+            now,
+            expiresAt: new Date(now.getTime() + IDEMPOTENCY_TTL_MS),
+          });
+          if (claim.kind === 'reused') return claim;
+          if (claim.kind === 'replay') {
+            const data = claim.response.ok ? claim.response.data as { messageId?: unknown } : undefined;
+            if (typeof data?.messageId !== 'string') throw new Error('Scheduled SMS idempotency result is invalid');
+            return { kind: 'replay' as const, messageId: data.messageId };
+          }
+          const message = await SmsService.saveMessage(tenantId, id, scheduledMessage, tx);
+          await postgresActionStore.completeIdempotency(tx, {
+            ...identity,
+            response: { ok: true, data: { messageId: message.id } },
+            now: new Date(),
+          });
+          return { kind: 'new' as const, message };
+        });
+        if (scheduled.kind === 'reused') {
+          const failure = smsSendFailureResponse({
+            code: 'IDEMPOTENCY_KEY_REUSED',
+            message: 'Idempotency key was reused with a different payload',
+          });
+          return res.status(failure.status).json(failure.payload);
+        }
+        if (scheduled.kind === 'replay') {
+          const message = await SmsService.getMessage(tenantId, scheduled.messageId);
+          if (!message) throw new Error('Scheduled SMS row not found');
+          return res.json({ message });
+        }
+        message = scheduled.message;
+      } else {
+        message = await SmsService.saveMessage(tenantId, id, scheduledMessage);
+      }
 
       await SmsService.logActivity(tenantId, id, 'message_scheduled', userId, req.user!.email, { messageId: message.id, scheduledAt });
 
