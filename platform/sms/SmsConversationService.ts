@@ -477,6 +477,8 @@ export async function saveMessage(
      */
     quietHoursEvaluatedAt?: Date;
   },
+  /** Existing tenant transaction; the caller owns commit/rollback. */
+  txClient?: DbClient,
 ): Promise<SmsMessage> {
   // Chokepoint quiet-hours enforcement. Inbound messages are always saved
   // (we still need to record what the recipient sent us). For outbound,
@@ -508,7 +510,7 @@ export async function saveMessage(
     }
   }
 
-  return withTenant(tenantId, async (client) => {
+  const persist = async (client: DbClient): Promise<SmsMessage> => {
     const id = randomUUID();
     const { rows } = await client.query(
       `INSERT INTO sms_messages (id, tenant_id, conversation_id, direction, from_number, to_number, body, status, twilio_sid, scheduled_at, sent_at)
@@ -536,7 +538,8 @@ export async function saveMessage(
     );
 
     return rowToMessage(rows[0]);
-  });
+  };
+  return txClient ? persist(txClient) : withTenant(tenantId, persist);
 }
 
 export async function getMessage(tenantId: string, messageId: string): Promise<SmsMessage | null> {
