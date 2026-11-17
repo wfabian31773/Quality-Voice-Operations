@@ -69,7 +69,7 @@ vi.mock('../../platform/actions/sms', async (importOriginal) => {
 import { createFakeSmsChokepoint } from '../../platform/actions/sms/__fixtures__/fakeSmsChokepoint';
 import { sendSystemSms } from '../../platform/actions/sms';
 import * as smsActions from '../../platform/actions/sms';
-import { TwilioApiError } from '../../platform/integrations/twilio/sender';
+import { sendTwilioSms, TwilioApiError } from '../../platform/integrations/twilio/sender';
 
 const isOnDncMock = vi.fn(async () => false);
 vi.mock('../../platform/campaigns/DncService', () => ({
@@ -81,7 +81,7 @@ const saveMessageMock = vi.fn();
 const getMessageMock = vi.fn();
 const logActivityMock = vi.fn(async () => {});
 const claimDueScheduledMessagesMock = vi.fn();
-const updateMessageStatusMock = vi.fn(async () => {});
+const updateMessageStatusMock = vi.fn(async (_tenantId: string, _id: string, _status: string, _twilioSid?: string) => {});
 
 vi.mock('../../platform/sms/SmsConversationService', () => ({
   getConversation: (...args: unknown[]) => getConversationMock(...args),
@@ -180,6 +180,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe('POST /sms-inbox/threads/:id/messages quiet-hours enforcement', () => {
@@ -655,6 +657,42 @@ describe('processScheduledMessages through the sms.send chokepoint', () => {
     } finally {
       send.mockRestore();
     }
+  });
+
+  it('preserves the first ambiguous transport timeout for a later mid status callback', async () => {
+    const fake = smsFake.current!;
+    const fetchMock = vi.fn().mockRejectedValue(new DOMException('Timed out', 'TimeoutError'));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('TWILIO_ACCOUNT_SID', 'ACtest');
+    vi.stubEnv('TWILIO_AUTH_TOKEN', 'test');
+    fake.transport.send.mockImplementationOnce((req) =>
+      sendTwilioSms(req.tenantId, req.to, req.from, req.body, { statusCallback: req.statusCallback }),
+    );
+    getMessageMock.mockImplementation(async (_tenantId: string, id: string) => fake.rows.get(id));
+    updateMessageStatusMock.mockImplementation(async (_tenantId, id, status) => {
+      fake.rows.get(id)!.status = status;
+    });
+
+    await processScheduledMessages();
+
+    expect(fake.rows.get('msg-1')).toMatchObject({
+      status: 'sending',
+      metadata: { transmitAttemptId: expect.any(String), transmitOutcome: 'unknown' },
+    });
+    expect(fake.rows.get('msg-1')!.twilioSid).toBeUndefined();
+    expect(fake.rows.size).toBe(1);
+    expect(fake.transport.send).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const request = fetchMock.mock.calls[0][0] as globalThis.Request;
+    expect(new URLSearchParams(await request.text()).get('StatusCallback'))
+      .toBe('https://voice.example.com/twilio/sms-status?mid=msg-1');
+    expect(updateMessageStatusMock).not.toHaveBeenCalled();
+    expect(logActivityMock).not.toHaveBeenCalled();
+    expect(queryMock.mock.calls.some(([sql]) => /UPDATE sms_messages/i.test(sql))).toBe(false);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      'Scheduled SMS may already have been sent; awaiting status callback',
+      { tenantId: 'tenant-1', messageId: 'msg-1' },
+    );
   });
 
   it.each([false, true])('preserves chokepoint quiet-hours deferral when activity logging rejects: %s', async (activityFails) => {

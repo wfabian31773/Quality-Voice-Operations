@@ -1174,6 +1174,13 @@ export async function processScheduledMessages(): Promise<void> {
           idempotencyKey: `sms:inbox-scheduled:${msg.id}:${msg.scheduledAt?.toISOString() ?? ''}`,
         });
         if (!sent.ok) {
+          const stored = await SmsService.getMessage(msg.tenantId, msg.id);
+          if (stored?.metadata?.transmitOutcome === 'unknown') {
+            logger.warn('Scheduled SMS may already have been sent; awaiting status callback', {
+              tenantId: msg.tenantId, messageId: msg.id,
+            });
+            continue;
+          }
           await SmsService.updateMessageStatus(msg.tenantId, msg.id, 'failed');
           if (sent.error.code === 'RECIPIENT_OPTED_OUT') {
             await SmsService.logActivity(msg.tenantId, msg.conversationId, 'message_sent', null, null, {
