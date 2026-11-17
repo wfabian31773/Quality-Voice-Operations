@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Client } from 'pg';
+import { newDb } from 'pg-mem';
 
 const holder = vi.hoisted(() => ({ client: null as null | { query: (sql: string, values?: unknown[]) => Promise<unknown> } }));
 
@@ -24,6 +25,62 @@ describe('smsStatusCallbackUrl', () => {
     );
     expect(smsStatusCallbackUrl({ REPLIT_DEV_DOMAIN: 'x.repl.co' })).toBe('https://x.repl.co/twilio/sms-status');
     expect(smsStatusCallbackUrl({})).toBeNull();
+  });
+});
+
+describe('postgresSmsSendStore replay lookup', () => {
+  it('finds recent same-key outbound attempts across recipients and returns their hash for comparison', async () => {
+    const db = newDb();
+    db.public.none(`CREATE TABLE sms_messages (
+      id TEXT, tenant_id TEXT, direction TEXT, to_number TEXT, body TEXT,
+      created_at TIMESTAMPTZ, metadata JSONB, twilio_sid TEXT)`);
+    const pool = new (db.adapters.createPg().Pool)();
+    const tx = { query: (sql: string, values?: unknown[]) => pool.query(sql, values) } as TenantTx;
+    const since = new Date('2026-11-15T12:00:00Z');
+    const to = '+13125550142';
+    const metadata = {
+      idempotencyKey: "raw-key-'", requestHash: 'original-hash', transmitAttemptId: 'attempt', transmitOutcome: 'unknown',
+    };
+    async function insert(id: string, overrides: Record<string, unknown> = {}) {
+      const row = {
+        tenant: 'A', direction: 'outbound', to, body: 'hello', created: new Date('2026-11-16T11:00:00Z'),
+        metadata, sid: null, ...overrides,
+      };
+      await pool.query(`INSERT INTO sms_messages VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+        [id, row.tenant, row.direction, row.to, row.body, row.created, JSON.stringify(row.metadata), row.sid]);
+    }
+    try {
+      // Same key alone cannot suppress a new send. These are all ineligible.
+      await insert('foreign', { tenant: 'B' });
+      await insert('inbound', { direction: 'inbound' });
+      await insert('expired', { created: new Date('2026-11-15T11:59:59Z') });
+      await insert('key', { metadata: { ...metadata, idempotencyKey: 'other' } });
+      await insert('marker-only', { metadata: { idempotencyKey: metadata.idempotencyKey, transmitAttemptId: 'attempt' } });
+      await insert('no-marker', { metadata: { idempotencyKey: metadata.idempotencyKey, transmitOutcome: 'unknown' } });
+      await insert('empty-marker', { metadata: { ...metadata, transmitAttemptId: '' } });
+      await insert('not-sent', { metadata: { ...metadata, transmitOutcome: 'not_sent' } });
+      expect(await store.findPriorSend(tx, 'A', metadata.idempotencyKey, since)).toBeNull();
+      await insert('unknown');
+      expect(await store.findPriorSend(tx, 'A', metadata.idempotencyKey, since)).toEqual({
+        id: 'unknown', body: 'hello', twilioSid: null, requestHash: 'original-hash',
+      });
+      await pool.query(`DELETE FROM sms_messages WHERE id = 'unknown'`);
+      await insert('recipient', { to: '+13125550199' });
+      expect(await store.findPriorSend(tx, 'A', metadata.idempotencyKey, since)).toEqual({
+        id: 'recipient', body: 'hello', twilioSid: null, requestHash: 'original-hash',
+      });
+      await pool.query(`DELETE FROM sms_messages WHERE id = 'recipient'`);
+      // A SID is sufficient, even without the marker/unknown metadata.
+      await insert('accepted', { metadata: { idempotencyKey: metadata.idempotencyKey }, sid: 'SMaccepted' });
+      expect(await store.findPriorSend(tx, 'A', metadata.idempotencyKey, since)).toEqual({
+        id: 'accepted', body: 'hello', twilioSid: 'SMaccepted', requestHash: null,
+      });
+      expect(await store.findPriorSend(tx, 'B', metadata.idempotencyKey, since)).toEqual({
+        id: 'foreign', body: 'hello', twilioSid: null, requestHash: 'original-hash',
+      });
+    } finally {
+      await pool.end();
+    }
   });
 });
 

@@ -17,6 +17,19 @@ beforeEach(() => {
 });
 
 describe('send_sms tool (thin wrapper over sms.send)', () => {
+  it('warns that the text may already have been sent on an unknown-outcome replay', async () => {
+    sendSystemSms.mockResolvedValueOnce({
+      ok: true, data: { messageId: 'm1', status: 'sending', reason: 'SEND_OUTCOME_UNKNOWN' },
+    });
+    expect(await executeSendSms({ templateKey: 'directions', vars: {} }, ctx)).toEqual({
+      success: false,
+      status: 'sending',
+      code: 'SEND_OUTCOME_UNKNOWN',
+      retryable: false,
+      message: 'The text may already have been sent. Please check your messages before asking me to send it again.',
+    });
+  });
+
   it('refuses free-text bodies without calling the chokepoint', async () => {
     const result = await executeSendSms({ toNumber: '+13125550142', body: 'anything the model wants' }, ctx);
     expect(result).toMatchObject({ success: false, code: 'TEMPLATE_REQUIRED' });

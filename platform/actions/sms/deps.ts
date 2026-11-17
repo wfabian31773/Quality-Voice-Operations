@@ -63,6 +63,13 @@ export interface SmsSendStore {
   /** True when `from` is one of the tenant's own numbers. */
   isTenantSender(tx: TenantTx, tenantId: string, from: string): Promise<boolean>;
   latestConsentAction(tx: TenantTx, tenantId: string, phone: string): Promise<'opt_in' | 'opt_out' | null>;
+  /** A recent same-key send across recipients; the action checks its request hash before replay. */
+  findPriorSend(
+    tx: TenantTx,
+    tenantId: string,
+    idempotencyKey: string,
+    since: Date,
+  ): Promise<{ id: string; body: string; twilioSid: string | null; requestHash: string | null } | null>;
   /**
    * A stored outbound row that was never handed to Twilio (no SID, still
    * `scheduled`/`sending`, not already owned by the chokepoint), or null.
@@ -96,6 +103,7 @@ export interface SmsSendStore {
 
 export interface SmsTransport {
   defaultFromNumber(tenantId: string): Promise<string | null>;
+  /** Throw TwilioSendOutcomeUnknownError only when the request may have been sent. Other errors are definite failures. */
   send(req: {
     tenantId: string;
     from: string;
@@ -224,6 +232,25 @@ export const postgresSmsSendStore: SmsSendStore = {
       [id, tenantId, CHOKEPOINT_SOURCE],
     );
     return rows[0] ? rowToRecord(rows[0]) : null;
+  },
+
+  async findPriorSend(tx, tenantId, idempotencyKey, since) {
+    const { rows } = await tx.query(
+      `SELECT id, body, twilio_sid, metadata ->> 'requestHash' AS request_hash FROM sms_messages
+        WHERE tenant_id = $1 AND direction = 'outbound' AND created_at >= $2
+          AND metadata ->> 'idempotencyKey' = $3
+          AND (twilio_sid IS NOT NULL
+            OR (metadata ->> 'transmitAttemptId' <> ''
+                AND metadata ->> 'transmitOutcome' = 'unknown'))
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [tenantId, since, idempotencyKey],
+    );
+    const row = rows[0];
+    return row ? {
+      id: row.id as string, body: row.body as string, twilioSid: row.twilio_sid as string | null,
+      requestHash: row.request_hash as string | null,
+    } : null;
   },
 
   async reserveOutbound(record, limit) {

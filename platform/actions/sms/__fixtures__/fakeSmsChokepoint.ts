@@ -53,6 +53,15 @@ export function createFakeSmsChokepoint(opts: { from?: string; senders?: string[
     latestConsentAction: vi.fn(async (_tx: unknown, _tenant: string, phone: string) =>
       state.optedOut.has(phone) ? ('opt_out' as const) : null,
     ),
+    findPriorSend: vi.fn(async (_tx, tenantId, key) => {
+      const r = [...rows.values()].find((r) =>
+        r.tenantId === tenantId && r.metadata.idempotencyKey === key &&
+        (r.twilioSid || (r.metadata.transmitAttemptId && r.metadata.transmitOutcome === 'unknown')),
+      );
+      return r ? {
+        id: r.id, body: r.body, twilioSid: r.twilioSid ?? null, requestHash: r.metadata.requestHash as string ?? null,
+      } : null;
+    }),
     loadStoredOutbound: vi.fn(async (_tx: unknown, _tenant: string, id: string) => {
       const r = rows.get(id);
       if (!r || r.twilioSid || !['scheduled', 'sending'].includes(r.status) || r.metadata.source === 'sms.send') {

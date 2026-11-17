@@ -409,6 +409,17 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
         }
         return res.status(status).json(payload);
       }
+      if (sent.data.reason === 'SEND_OUTCOME_UNKNOWN') {
+        // This is a protected replay, not a definite rejection: keep the
+        // action result cached. 409 lets the composer retire its draft key
+        // after showing the warning, for a deliberate resend if needed.
+        return res.status(409).json({
+          error: 'This message may already have been sent. Check the thread before sending again.',
+          code: 'SEND_OUTCOME_UNKNOWN',
+          reason: 'send_outcome_unknown',
+          messageId: sent.data.messageId,
+        });
+      }
       const message = await SmsService.getMessage(tenantId, sent.data.messageId);
       if (!message) throw new Error('Sent SMS row not found');
 
@@ -1163,6 +1174,13 @@ export async function processScheduledMessages(): Promise<void> {
           idempotencyKey: `sms:inbox-scheduled:${msg.id}:${msg.scheduledAt?.toISOString() ?? ''}`,
         });
         if (!sent.ok) {
+          const stored = await SmsService.getMessage(msg.tenantId, msg.id);
+          if (stored?.metadata?.transmitOutcome === 'unknown') {
+            logger.warn('Scheduled SMS may already have been sent; awaiting status callback', {
+              tenantId: msg.tenantId, messageId: msg.id,
+            });
+            continue;
+          }
           await SmsService.updateMessageStatus(msg.tenantId, msg.id, 'failed');
           if (sent.error.code === 'RECIPIENT_OPTED_OUT') {
             await SmsService.logActivity(msg.tenantId, msg.conversationId, 'message_sent', null, null, {
@@ -1172,6 +1190,12 @@ export async function processScheduledMessages(): Promise<void> {
             });
           }
           logger.warn('Scheduled SMS not sent', { tenantId: msg.tenantId, messageId: msg.id, code: sent.error.code });
+          continue;
+        }
+        if (sent.data.reason === 'SEND_OUTCOME_UNKNOWN') {
+          logger.warn('Scheduled SMS may already have been sent; awaiting status callback', {
+            tenantId: msg.tenantId, messageId: sent.data.messageId,
+          });
           continue;
         }
         if (sent.data.status === 'deferred_quiet_hours') {

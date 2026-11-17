@@ -272,6 +272,24 @@ describe('notifySustainedConnectorFailure', () => {
     }
   });
 
+  it('does not record an unknown-outcome replay as a sent outage alert', async () => {
+    mockScenario({
+      tenant: { name: 'Acme' },
+      phoneRecipients: [{ id: 'user-a', phone: '+15551234567' }],
+      tenantUsers: ['user-a'],
+    });
+    sendSystemSmsMock.mockResolvedValue({
+      ok: true, data: { messageId: 'm1', status: 'sending', reason: 'SEND_OUTCOME_UNKNOWN' },
+    });
+    const { notifySustainedConnectorFailure } = await import('../../platform/integrations/connectors/SyncErrorAlerter');
+    await notifySustainedConnectorFailure({
+      ...baseParams, firstFailedAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+    });
+    expect(sendSystemSmsMock).toHaveBeenCalledTimes(1);
+    expect(callsMatching('INSERT INTO connector_alert_recipients')).toHaveLength(0);
+    expect(callsMatching('INSERT INTO tenant_notifications')).toHaveLength(0);
+  });
+
   it('records the Message SID returned by the chokepoint for live tracking', async () => {
     // This is the wiring the /twilio/sms-status webhook depends on: the
     // chokepoint sends with a StatusCallback to /twilio/sms-status (pinned in

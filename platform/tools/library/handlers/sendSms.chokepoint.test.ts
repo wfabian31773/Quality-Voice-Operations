@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { OutboundSmsPatch, OutboundSmsRecord, SmsSendDeps } from '../../../actions/sms/deps';
 
 // End to end: agent tool handler -> sendSystemSms -> sms.send chokepoint -> transport.
 // The default action deps and action store are swapped for in-memory fakes;
 // the Twilio sender is stubbed so a real send can never happen.
 const fake = vi.hoisted(() => {
-  const records: Array<{ id: string; to: string; body: string; status: string }> = [];
+  const records: Array<OutboundSmsRecord & { twilioSid?: string }> = [];
   const transport = {
     defaultFromNumber: vi.fn(async () => '+13125550100'),
     send: vi.fn(async (_req: { tenantId: string; from: string; to: string; body: string; statusCallback: string | null }) => ({
@@ -61,17 +62,30 @@ vi.mock('../../../actions/sms/deps', async (importOriginal) => {
         isTenantMessagingEnabled: async () => true,
         isTenantSender: async () => true,
         latestConsentAction: async () => null,
-        reserveOutbound: async (record: { id: string; to: string; body: string; status: string }) => {
-          fake.records.push({ id: record.id, to: record.to, body: record.body, status: record.status });
+        loadStoredOutbound: async () => null,
+        findPriorSend: async (_tx, tenantId, key) => {
+          const row = fake.records.find((r) => r.tenantId === tenantId && r.metadata.idempotencyKey === key &&
+            (r.twilioSid || (r.metadata.transmitAttemptId && r.metadata.transmitOutcome === 'unknown')));
+          return row ? {
+            id: row.id, body: row.body, twilioSid: row.twilioSid ?? null,
+            requestHash: row.metadata.requestHash as string ?? null,
+          } : null;
+        },
+        reserveOutbound: async (record) => {
+          fake.records.push({ ...record });
           return { reserved: true };
         },
         reserveDeferredSend: async () => ({ reserved: true }),
-        insertOutbound: async (record: { id: string; to: string; body: string; status: string }) => {
-          fake.records.push({ id: record.id, to: record.to, body: record.body, status: record.status });
+        insertOutbound: async (record) => {
+          fake.records.push({ ...record });
         },
-        updateOutbound: async (_tenantId: string, id: string, patch: { status: string }) => {
+        updateOutbound: async (_tenantId: string, id: string, patch: OutboundSmsPatch) => {
           const row = fake.records.find((r) => r.id === id);
-          if (row) row.status = patch.status;
+          if (row) {
+            const { metadata, ...rest } = patch;
+            Object.assign(row, rest);
+            row.metadata = { ...row.metadata, ...metadata };
+          }
         },
         claimDueDeferred: async () => [],
       },
@@ -86,7 +100,7 @@ vi.mock('../../../actions/sms/deps', async (importOriginal) => {
         rateLimit: () => ({ max: 5, windowMs: 3_600_000 }),
         statusCallbackUrl: () => 'https://voice.example.com/twilio/sms-status',
       },
-    },
+    } satisfies SmsSendDeps,
   };
 });
 
@@ -96,6 +110,7 @@ const fetchSpy = vi.fn(async () => {
 vi.stubGlobal('fetch', fetchSpy);
 
 import { sendSmsTool } from './sendSms';
+import { TwilioSendOutcomeUnknownError } from '../../../integrations/twilio/sender';
 
 const ctx = { tenantId: 'tenant-1', callSid: 'CA-e2e', callerNumber: '+13125550142', agentSlug: 'barber' };
 
@@ -108,6 +123,19 @@ beforeEach(() => {
 });
 
 describe('send_sms tool -> sms.send chokepoint', () => {
+  it('warns on a timeout replay without sending a second text', async () => {
+    const call = { ...ctx, callSid: 'CA-e2e-timeout' } as never;
+    const input = { templateKey: 'directions', vars: { businessName: 'Fade Lab', address: '12 Main St' } };
+    fake.transport.send.mockRejectedValueOnce(new TwilioSendOutcomeUnknownError(new Error('timeout')));
+    expect(await sendSmsTool.handler(input, call)).toMatchObject({ success: false, retryable: true });
+    expect(await sendSmsTool.handler(input, call)).toMatchObject({
+      success: false, status: 'sending', code: 'SEND_OUTCOME_UNKNOWN', retryable: false,
+      message: expect.stringContaining('may already have been sent'),
+    });
+    expect(fake.transport.send).toHaveBeenCalledTimes(1);
+    expect(fake.records).toHaveLength(1);
+  });
+
   it('sends the rendered confirmation template through the chokepoint transport', async () => {
     const result = await sendSmsTool.handler(
       {

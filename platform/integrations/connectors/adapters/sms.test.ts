@@ -20,7 +20,7 @@ vi.mock('../../../actions/sms', async (importOriginal) => {
   };
 });
 
-import { TwilioApiError } from '../../twilio/sender';
+import { TwilioApiError, TwilioSendOutcomeUnknownError } from '../../twilio/sender';
 import { createFakeSmsChokepoint } from '../../../actions/sms/__fixtures__/fakeSmsChokepoint';
 import type { ConnectorConfig } from '../types';
 import { TwilioSmsConnectorAdapter } from './sms';
@@ -46,6 +46,17 @@ beforeEach(() => {
 });
 
 describe('TwilioSmsConnectorAdapter through the sms.send chokepoint', () => {
+  it('does not report an unknown replay as sent', async () => {
+    const payload = escalation();
+    h.fake!.state.sendError = new TwilioSendOutcomeUnknownError(new Error('timeout'));
+    await adapter.execute('tenant-1', config, payload);
+    expect(await adapter.execute('tenant-1', config, payload)).toMatchObject({
+      success: false, error: expect.stringContaining('SEND_OUTCOME_UNKNOWN'),
+    });
+    expect(h.fake!.transport.send).toHaveBeenCalledTimes(1);
+    expect(h.recordSmsUsage).not.toHaveBeenCalled();
+  });
+
   it('sends the escalation alert with the same text to the on-call number', async () => {
     const payload = escalation('2026-10-14T15:00:00.000Z');
     // Not "live" any more (an old timestamp), so quiet hours apply normally: allowed here.
