@@ -109,6 +109,12 @@ export interface ActionDefinition<I = unknown, O = unknown> {
   /** Rewrites the raw input before it is audited; used only on the validation-failure path, must never throw. */
   auditRawInput?: (raw: unknown) => unknown;
   run: (ctx: ActionContext, input: I, tx: TenantTx) => Promise<ActionResult<O>>;
+  /**
+   * Runs after the tenant transaction commits a fresh successful write.
+   * Skipped on idempotent replay so side effects (SMS, push) fire once.
+   * Must not throw; `runAction` swallows errors so they cannot change the result.
+   */
+  afterCommit?: (ctx: ActionContext, result: ActionResult<O>) => void | Promise<void>;
 }
 
 // Registry entries are heterogeneous; `any` keeps assignability from typed defs.

@@ -48,6 +48,7 @@ import {
   type GeoPoint,
 } from '../../../platform/integrations/routing';
 import { createRateLimiter } from '../../../platform/infra/rate-limit/createRateLimiter';
+import { STATUS_TO_TRIGGER, TERMINAL_JOB_STATUSES, VALID_TRANSITIONS } from '../../../platform/actions/dispatch/transitions';
 import {
   DISPATCH_MERGE_TOKENS,
   countSmsSegments,
@@ -204,16 +205,6 @@ async function validateResourceAssignment(
 
   return { valid: true };
 }
-
-const STATUS_TO_TRIGGER: Record<string, string> = {
-  assigned: 'job_assigned',
-  scheduled: 'job_scheduled',
-  en_route: 'en_route',
-  on_site: 'arrival',
-  completed: 'completed',
-  done: 'completed',
-  cancelled: 'cancelled',
-};
 
 export async function fireNotifications(
   pool: ReturnType<typeof getPlatformPool>,
@@ -605,29 +596,6 @@ async function computeLiveEtaForJob(
     return null;
   }
 }
-
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  pending: ['assigned', 'cancelled'],
-  assigned: ['scheduled', 'en_route', 'in_progress', 'cancelled', 'pending'],
-  scheduled: ['en_route', 'in_progress', 'cancelled', 'assigned'],
-  en_route: ['on_site', 'cancelled'],
-  on_site: ['in_progress', 'cancelled'],
-  in_progress: ['completed', 'incomplete', 'cancelled', 'done'],
-  completed: ['done'],
-  incomplete: ['pending', 'assigned', 'cancelled'],
-  done: [],
-  cancelled: ['pending'],
-};
-
-// A job in one of these statuses is no longer "in the field", so the
-// technician's mobile app should have stopped sending location pings and
-// the live map should drop the marker.
-const TERMINAL_JOB_STATUSES = new Set([
-  'completed',
-  'cancelled',
-  'done',
-  'incomplete',
-]);
 
 // Maximum acceptable closest-approach distance (in meters) between the
 // technician's GPS breadcrumbs and the customer's geocoded address. If
