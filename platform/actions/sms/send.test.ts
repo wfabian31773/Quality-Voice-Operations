@@ -10,7 +10,7 @@ vi.mock('../../db', () => ({
 }));
 
 import { createMemoryStore, runAction, runActionDefinition, type ActionContext, type Actor } from '../core';
-import { TwilioApiError } from '../../integrations/twilio/sender';
+import { TwilioApiError, TwilioSendOutcomeUnknownError } from '../../integrations/twilio/sender';
 import { clearSmsQuietHoursCache } from '../../sms/SmsQuietHours';
 import {
   tenantSmsQuietHours,
@@ -28,6 +28,7 @@ import {
   releaseDueDeferredSms,
   sendStoredSms,
   sendSystemSms,
+  sendSystemSmsOrThrow,
   sendUserSms,
   SMS_RELEASE_MAX_ATTEMPTS,
   type SystemSmsRequest,
@@ -84,12 +85,14 @@ function setup(overrides: Partial<SmsSendConfig> = {}) {
     isTenantMessagingEnabled: vi.fn(async () => state.tenantEnabled),
     isTenantSender: vi.fn(async (_tx: unknown, _tenant: string, from: string) => state.senders.includes(from)),
     latestConsentAction: vi.fn(async (_tx: unknown, _tenant: string, phone: string) => state.consent.get(phone) ?? null),
-    findPriorSend: vi.fn(async (_tx, tenantId, to, key) => {
+    findPriorSend: vi.fn(async (_tx, tenantId, key) => {
       const r = [...records.values()].find((r) =>
-        r.tenantId === tenantId && r.to === to && r.metadata.idempotencyKey === key &&
+        r.tenantId === tenantId && r.metadata.idempotencyKey === key &&
         (r.twilioSid || (r.metadata.transmitAttemptId && r.metadata.transmitOutcome === 'unknown')),
       );
-      return r ? { id: r.id, body: r.body, twilioSid: r.twilioSid ?? null } : null;
+      return r ? {
+        id: r.id, body: r.body, twilioSid: r.twilioSid ?? null, requestHash: r.metadata.requestHash as string ?? null,
+      } : null;
     }),
     loadStoredOutbound: vi.fn(async (_tx: unknown, _tenant: string, id: string) => {
       const r = records.get(id);
@@ -819,9 +822,66 @@ describe('sms.send chokepoint', () => {
   });
 
   describe('idempotency', () => {
+    it('does not report an unknown replay as queued through the throwing adapter', async () => {
+      const t = setup();
+      t.transport.send.mockRejectedValueOnce(new TwilioSendOutcomeUnknownError(new Error('timeout')));
+      const req = {
+        tenantId: TENANT, to: TO, templateKey: 'directions' as const,
+        vars: { businessName: 'Fade Lab', address: '12 Main St' },
+        purpose: 'transactional' as const, idempotencyKey: 'throwing-adapter', now: DAYTIME,
+      };
+      await sendSystemSms(req, { action: t.action, runtime: t.runtime });
+      await expect(sendSystemSmsOrThrow(req, { action: t.action, runtime: t.runtime }))
+        .rejects.toThrow('SEND_OUTCOME_UNKNOWN');
+      expect(t.transport.send).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      { body: 'A different reply' },
+      { to: '+13125550199' },
+    ])('rejects a changed payload %j after a timeout, with or without a callback SID', async (changed) => {
+      for (const sid of [undefined, 'SMcallback']) {
+        const t = setup();
+        const input = { to: TO, body: 'Original reply', purpose: 'conversational' };
+        t.transport.send.mockRejectedValueOnce(new TwilioSendOutcomeUnknownError(new Error('timeout')));
+        await t.asActor(owner, input, DAYTIME, 'changed');
+        t.records.get('msg-1')!.twilioSid = sid;
+        expect(await t.asActor(owner, { ...input, ...changed }, DAYTIME, 'changed')).toMatchObject({
+          ok: false,
+          error: { code: 'IDEMPOTENCY_KEY_REUSED', message: 'Idempotency key was reused with a different payload', retryable: false },
+        });
+        expect(t.transport.send).toHaveBeenCalledTimes(1);
+        expect(t.records.size).toBe(1);
+      }
+    });
+
+    it('does not replay a legacy attempt without a request hash', async () => {
+      const t = setup();
+      t.transport.send.mockRejectedValueOnce(new TwilioSendOutcomeUnknownError(new Error('timeout')));
+      await t.system({ idempotencyKey: 'legacy' });
+      delete t.records.get('msg-1')!.metadata.requestHash;
+      expect(await t.system({ idempotencyKey: 'legacy' })).toMatchObject({
+        ok: false, error: { code: 'IDEMPOTENCY_KEY_REUSED', retryable: false },
+      });
+      expect(t.transport.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('marks missing credentials as not_sent and allows a same-key retry after they are fixed', async () => {
+      const t = setup();
+      t.transport.send.mockRejectedValueOnce(new Error('No Twilio credentials configured for tenant'));
+      expect(await t.system({ idempotencyKey: 'credentials' })).toMatchObject({
+        ok: false, error: { code: 'UPSTREAM_UNAVAILABLE', retryable: true },
+      });
+      expect(t.records.get('msg-1')).toMatchObject({ status: 'failed', metadata: { transmitOutcome: 'not_sent' } });
+      expect(await t.system({ idempotencyKey: 'credentials' })).toMatchObject({
+        ok: true, data: { messageId: 'msg-2', status: 'queued' },
+      });
+      expect(t.transport.send).toHaveBeenCalledTimes(2);
+    });
+
     it('replays an ambiguous timeout with the original messageId without calling Twilio again', async () => {
       const t = setup();
-      t.transport.send.mockRejectedValueOnce(new Error('timeout'));
+      t.transport.send.mockRejectedValueOnce(new TwilioSendOutcomeUnknownError(new Error('timeout')));
       const first = await t.system({ idempotencyKey: 'timeout' });
       expect(first).toMatchObject({ ok: false, error: { code: 'UPSTREAM_UNAVAILABLE', retryable: true } });
       expect(t.records.get('msg-1')).toMatchObject({
@@ -833,7 +893,7 @@ describe('sms.send chokepoint', () => {
       expect(t.transport.send).toHaveBeenCalledTimes(1);
       expect(t.store.reserveOutbound).toHaveBeenCalledTimes(1);
       expect(t.store.findPriorSend).toHaveBeenLastCalledWith(
-        expect.anything(), TENANT, TO, 'timeout', new Date(DAYTIME.getTime() - 86_400_000),
+        expect.anything(), TENANT, 'timeout', new Date(DAYTIME.getTime() - 86_400_000),
       );
     });
 
@@ -850,7 +910,7 @@ describe('sms.send chokepoint', () => {
 
     it('allows two attempts without a key after a timeout', async () => {
       const t = setup();
-      t.transport.send.mockRejectedValueOnce(new Error('timeout'));
+      t.transport.send.mockRejectedValueOnce(new TwilioSendOutcomeUnknownError(new Error('timeout')));
       const ctx: ActionContext = { tenantId: TENANT, actor: owner, now: DAYTIME, tenantTimezone: 'America/Chicago' };
       const input = { to: TO, body: 'Thanks', purpose: 'conversational' as const };
       const tx = { query: vi.fn(async () => ({ rows: [] })) };
@@ -862,7 +922,7 @@ describe('sms.send chokepoint', () => {
 
     it('replays a saved SID as success after an ambiguous attempt without calling Twilio again', async () => {
       const t = setup();
-      t.transport.send.mockRejectedValueOnce(new Error('timeout'));
+      t.transport.send.mockRejectedValueOnce(new TwilioSendOutcomeUnknownError(new Error('timeout')));
       await t.system({ idempotencyKey: 'callback' });
       // A StatusCallback attached the SID before the client retried.
       t.records.get('msg-1')!.twilioSid = 'SMcallback';
@@ -874,7 +934,7 @@ describe('sms.send chokepoint', () => {
 
     it('does not reuse tenant A ambiguous attempt for tenant B with the same raw key', async () => {
       const t = setup();
-      t.transport.send.mockRejectedValueOnce(new Error('timeout'));
+      t.transport.send.mockRejectedValueOnce(new TwilioSendOutcomeUnknownError(new Error('timeout')));
       await t.system({ idempotencyKey: 'shared' });
       expect(await t.system({ tenantId: 'tenant-2', idempotencyKey: 'shared' })).toMatchObject({
         ok: true, data: { messageId: 'msg-2', status: 'queued' },

@@ -57,6 +57,14 @@ export class TwilioApiError extends Error {
   }
 }
 
+/** The HTTP request started, but its acceptance/SID could not be confirmed. */
+export class TwilioSendOutcomeUnknownError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = 'TwilioSendOutcomeUnknownError';
+  }
+}
+
 export async function twilioPost(
   creds: TwilioCredentials,
   path: string,
@@ -65,7 +73,8 @@ export async function twilioPost(
   const url = `https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}${path}`;
   const auth = Buffer.from(`${creds.apiKey}:${creds.apiKeySecret}`).toString('base64');
   const formBody = new URLSearchParams(body);
-  const response = await fetch(url, {
+  // Validate/build locally before entering the uncertain network boundary.
+  const request = new Request(url, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${auth}`,
@@ -73,6 +82,12 @@ export async function twilioPost(
     },
     body: formBody.toString(),
   });
+  let response: Response;
+  try {
+    response = await fetch(request);
+  } catch (err) {
+    throw new TwilioSendOutcomeUnknownError(err);
+  }
   if (!response.ok) {
     const errData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     throw new TwilioApiError(
@@ -81,7 +96,13 @@ export async function twilioPost(
       typeof errData.code === 'number' ? errData.code : null,
     );
   }
-  return response.json() as Promise<Record<string, unknown>>;
+  try {
+    return await response.json() as Record<string, unknown>;
+  } catch (err) {
+    // A successful HTTP response may have created the SMS even if its body
+    // was truncated or could not be read.
+    throw new TwilioSendOutcomeUnknownError(err);
+  }
 }
 
 /**

@@ -1185,6 +1185,12 @@ export async function processScheduledMessages(): Promise<void> {
           logger.warn('Scheduled SMS not sent', { tenantId: msg.tenantId, messageId: msg.id, code: sent.error.code });
           continue;
         }
+        if (sent.data.reason === 'SEND_OUTCOME_UNKNOWN') {
+          logger.warn('Scheduled SMS may already have been sent; awaiting status callback', {
+            tenantId: msg.tenantId, messageId: sent.data.messageId,
+          });
+          continue;
+        }
         if (sent.data.status === 'deferred_quiet_hours') {
           // The chokepoint stored the deferral on the row; its release job sends it.
           try {

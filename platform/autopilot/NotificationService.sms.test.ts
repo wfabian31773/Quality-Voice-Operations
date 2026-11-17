@@ -22,6 +22,7 @@ vi.mock('../actions/sms', async (importOriginal) => {
 import { createFakeSmsChokepoint } from '../actions/sms/__fixtures__/fakeSmsChokepoint';
 import { sendUrgentSmsAlert } from './NotificationService';
 import type { AutopilotRecommendation } from './types';
+import { TwilioSendOutcomeUnknownError } from '../integrations/twilio/sender';
 
 const TO = '+13125550142';
 const rec = {
@@ -41,6 +42,15 @@ beforeEach(() => {
 });
 
 describe('sendUrgentSmsAlert through the sms.send chokepoint', () => {
+  it('does not record an unknown replay as delivered', async () => {
+    h.fake!.state.sendError = new TwilioSendOutcomeUnknownError(new Error('timeout'));
+    await sendUrgentSmsAlert('tenant-1', rec, TO);
+    h.clientQuery.mockClear();
+    await sendUrgentSmsAlert('tenant-1', rec, TO);
+    expect(notificationInserts()).toHaveLength(0);
+    expect(h.fake!.transport.send).toHaveBeenCalledTimes(1);
+  });
+
   it('sends the same alert text as a system template and records the notification', async () => {
     await sendUrgentSmsAlert('tenant-1', rec, TO);
     expect(h.fake!.transport.send).toHaveBeenCalledTimes(1);

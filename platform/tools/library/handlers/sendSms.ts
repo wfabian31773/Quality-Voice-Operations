@@ -68,6 +68,15 @@ export async function executeSendSms(
         message: result.error.callerSafeMessage,
       };
     }
+    if (result.data.reason === 'SEND_OUTCOME_UNKNOWN') {
+      return {
+        success: false,
+        status: result.data.status,
+        code: result.data.reason,
+        retryable: false,
+        message: 'The text may already have been sent. Please check your messages before asking me to send it again.',
+      };
+    }
     if (result.data.status === 'deferred_quiet_hours') {
       return { success: true, status: result.data.status, message: "You'll get the text in the morning." };
     }

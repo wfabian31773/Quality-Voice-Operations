@@ -11,7 +11,7 @@ import { Client, Pool } from 'pg';
 import { DataType, newDb } from 'pg-mem';
 import type { Request, Response, NextFunction } from 'express';
 import type { ActionRuntime } from '../../../platform/actions/core/runtime';
-import { TwilioApiError } from '../../../platform/integrations/twilio/sender';
+import { TwilioApiError, TwilioSendOutcomeUnknownError } from '../../../platform/integrations/twilio/sender';
 import { smsInboxReplyIdempotencyKey } from './smsInboxSchemas';
 import { postgresActionStore } from '../../../platform/actions/core/postgresStore';
 
@@ -297,7 +297,7 @@ describe('POST /sms-inbox/threads/:id/messages through sms.send', () => {
 
 describe('ambiguous inbox reply replay', () => {
   it('warns with the original messageId on a timeout retry and never sends a second SMS', async () => {
-    smsFake.current!.state.sendError = new Error('timeout');
+    smsFake.current!.state.sendError = new TwilioSendOutcomeUnknownError(new Error('timeout'));
     const post = () => postReply('Thanks for booking', 'timeout');
     expect((await post()).status).toBe(500);
     smsFake.current!.state.sendError = null;

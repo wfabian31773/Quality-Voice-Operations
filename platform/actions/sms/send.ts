@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { createLogger } from '../../core/logger';
-import { TwilioApiError } from '../../integrations/twilio/sender';
+import { TwilioApiError, TwilioSendOutcomeUnknownError } from '../../integrations/twilio/sender';
 import {
   actionFail,
   actionOk,
@@ -208,7 +208,7 @@ function classifyTransportError(err: unknown): ActionResult<never> {
     const retryable = err.httpStatus >= 500 || err.httpStatus === 429;
     return smsFail('UPSTREAM_UNAVAILABLE', err.message, { retryable });
   }
-  // Network failures, timeouts, missing credentials at send time.
+  // Transport failures and local setup errors remain retryable.
   return smsFail('UPSTREAM_UNAVAILABLE', err instanceof Error ? err.message : String(err), { retryable: true });
 }
 
@@ -280,7 +280,7 @@ async function transmit(
     });
   } catch (err) {
     const result = classifyTransportError(err);
-    if (markFailed && err instanceof TwilioApiError) await markTransmitFailed(deps, msg, result);
+    if (markFailed && !(err instanceof TwilioSendOutcomeUnknownError)) await markTransmitFailed(deps, msg, result);
     return { ok: false, result };
   }
   try {
@@ -370,15 +370,20 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
       if (!resolved.ok) return resolved.result;
       const body = resolved.body;
       const stats = bodyStats(body);
+      // Match the action runtime's hash, including the call binding.
+      const hash = ctx.idempotencyKey ? requestHash({ input, callId: ctx.callId ?? null }) : null;
 
       // The runtime releases retryable failures, but a transport timeout may
       // have happened after Twilio accepted. Consult the committed message
       // before reserving another row or applying new-send policy checks.
       if (ctx.idempotencyKey) {
         const prior = await deps.store.findPriorSend(
-          tx, ctx.tenantId, to, ctx.idempotencyKey, new Date(ctx.now.getTime() - IDEMPOTENCY_TTL_MS),
+          tx, ctx.tenantId, ctx.idempotencyKey, new Date(ctx.now.getTime() - IDEMPOTENCY_TTL_MS),
         );
         if (prior) {
+          if (!prior.requestHash || prior.requestHash !== hash) {
+            return actionFail('IDEMPOTENCY_KEY_REUSED', 'Idempotency key was reused with a different payload');
+          }
           return actionOk({
             messageId: prior.id,
             ...(prior.twilioSid
@@ -423,6 +428,7 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
         actor: { type: ctx.actor.type, id: ctx.actor.id },
         callId: ctx.callId ?? input.liveCall?.callId ?? null,
         idempotencyKey: ctx.idempotencyKey ?? null,
+        ...(hash ? { requestHash: hash } : {}),
         segments: stats.segments,
         encoding: stats.encoding,
         // Always written, so a stored row can't carry its own value in.
@@ -574,6 +580,9 @@ export async function sendSystemSmsOrThrow(
 ): Promise<{ sid?: string; status: SmsSendOutput['status'] }> {
   const result = await sendSystemSms(req, opts);
   if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
+  if (result.data.reason === SMS_SEND_OUTCOME_UNKNOWN) {
+    throw new Error(`${SMS_SEND_OUTCOME_UNKNOWN}: This message may already have been sent. Check before sending again.`);
+  }
   return { sid: result.data.twilioSid, status: result.data.status };
 }
 

@@ -482,6 +482,9 @@ async function sendOutageSms(
     if (!result.ok) {
       return { ok: false, error: `${result.error.code}: ${result.error.message}` };
     }
+    if (result.data.reason === 'SEND_OUTCOME_UNKNOWN') {
+      return { ok: false, error: 'SEND_OUTCOME_UNKNOWN: This message may already have been sent. Check before sending again.' };
+    }
     return { ok: true, messageSid: result.data.twilioSid ?? null };
   } catch (err) {
     return { ok: false, error: String(err) };

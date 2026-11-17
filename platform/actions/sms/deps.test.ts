@@ -29,7 +29,7 @@ describe('smsStatusCallbackUrl', () => {
 });
 
 describe('postgresSmsSendStore replay lookup', () => {
-  it('matches only recent outbound attempts for the tenant, recipient and key with an unknown outcome or SID', async () => {
+  it('finds recent same-key outbound attempts across recipients and returns their hash for comparison', async () => {
     const db = newDb();
     db.public.none(`CREATE TABLE sms_messages (
       id TEXT, tenant_id TEXT, direction TEXT, to_number TEXT, body TEXT,
@@ -38,7 +38,9 @@ describe('postgresSmsSendStore replay lookup', () => {
     const tx = { query: (sql: string, values?: unknown[]) => pool.query(sql, values) } as TenantTx;
     const since = new Date('2026-11-15T12:00:00Z');
     const to = '+13125550142';
-    const metadata = { idempotencyKey: "raw-key-'", transmitAttemptId: 'attempt', transmitOutcome: 'unknown' };
+    const metadata = {
+      idempotencyKey: "raw-key-'", requestHash: 'original-hash', transmitAttemptId: 'attempt', transmitOutcome: 'unknown',
+    };
     async function insert(id: string, overrides: Record<string, unknown> = {}) {
       const row = {
         tenant: 'A', direction: 'outbound', to, body: 'hello', created: new Date('2026-11-16T11:00:00Z'),
@@ -51,25 +53,30 @@ describe('postgresSmsSendStore replay lookup', () => {
       // Same key alone cannot suppress a new send. These are all ineligible.
       await insert('foreign', { tenant: 'B' });
       await insert('inbound', { direction: 'inbound' });
-      await insert('recipient', { to: '+13125550199' });
       await insert('expired', { created: new Date('2026-11-15T11:59:59Z') });
       await insert('key', { metadata: { ...metadata, idempotencyKey: 'other' } });
       await insert('marker-only', { metadata: { idempotencyKey: metadata.idempotencyKey, transmitAttemptId: 'attempt' } });
       await insert('no-marker', { metadata: { idempotencyKey: metadata.idempotencyKey, transmitOutcome: 'unknown' } });
       await insert('empty-marker', { metadata: { ...metadata, transmitAttemptId: '' } });
-      expect(await store.findPriorSend(tx, 'A', to, metadata.idempotencyKey, since)).toBeNull();
+      await insert('not-sent', { metadata: { ...metadata, transmitOutcome: 'not_sent' } });
+      expect(await store.findPriorSend(tx, 'A', metadata.idempotencyKey, since)).toBeNull();
       await insert('unknown');
-      expect(await store.findPriorSend(tx, 'A', to, metadata.idempotencyKey, since)).toEqual({
-        id: 'unknown', body: 'hello', twilioSid: null,
+      expect(await store.findPriorSend(tx, 'A', metadata.idempotencyKey, since)).toEqual({
+        id: 'unknown', body: 'hello', twilioSid: null, requestHash: 'original-hash',
       });
-      // A SID is sufficient, even without the marker/unknown metadata.
       await pool.query(`DELETE FROM sms_messages WHERE id = 'unknown'`);
-      await insert('accepted', { metadata: { idempotencyKey: metadata.idempotencyKey }, sid: 'SMaccepted' });
-      expect(await store.findPriorSend(tx, 'A', to, metadata.idempotencyKey, since)).toEqual({
-        id: 'accepted', body: 'hello', twilioSid: 'SMaccepted',
+      await insert('recipient', { to: '+13125550199' });
+      expect(await store.findPriorSend(tx, 'A', metadata.idempotencyKey, since)).toEqual({
+        id: 'recipient', body: 'hello', twilioSid: null, requestHash: 'original-hash',
       });
-      expect(await store.findPriorSend(tx, 'B', to, metadata.idempotencyKey, since)).toEqual({
-        id: 'foreign', body: 'hello', twilioSid: null,
+      await pool.query(`DELETE FROM sms_messages WHERE id = 'recipient'`);
+      // A SID is sufficient, even without the marker/unknown metadata.
+      await insert('accepted', { metadata: { idempotencyKey: metadata.idempotencyKey }, sid: 'SMaccepted' });
+      expect(await store.findPriorSend(tx, 'A', metadata.idempotencyKey, since)).toEqual({
+        id: 'accepted', body: 'hello', twilioSid: 'SMaccepted', requestHash: null,
+      });
+      expect(await store.findPriorSend(tx, 'B', metadata.idempotencyKey, since)).toEqual({
+        id: 'foreign', body: 'hello', twilioSid: null, requestHash: 'original-hash',
       });
     } finally {
       await pool.end();

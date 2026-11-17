@@ -153,6 +153,10 @@ export async function sendUrgentSmsAlert(
     if (!result.ok) {
       logger.error('SMS send failed', { code: result.error.code, tenantId });
     }
+    if (result.ok && result.data.reason === 'SEND_OUTCOME_UNKNOWN') {
+      logger.warn('SMS may already have been sent; delivery is unconfirmed', { tenantId, messageId: result.data.messageId });
+      return;
+    }
 
     await client.query('BEGIN');
     await withTenantContext(client, tenantId, async () => {});

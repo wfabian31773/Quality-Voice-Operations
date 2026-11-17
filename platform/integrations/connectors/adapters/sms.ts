@@ -67,6 +67,10 @@ export class TwilioSmsConnectorAdapter implements ConnectorAdapter {
         return { success: false, error };
       }
 
+      if (result.data.reason === 'SEND_OUTCOME_UNKNOWN') {
+        return { success: false, error: 'SEND_OUTCOME_UNKNOWN: This message may already have been sent. Check before sending again.' };
+      }
+
       const messageSid = result.data.twilioSid;
       logger.info('SMS sent successfully', { tenantId, messageSid, status: result.data.status });
 

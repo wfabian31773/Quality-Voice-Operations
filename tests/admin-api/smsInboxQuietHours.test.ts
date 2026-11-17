@@ -68,6 +68,7 @@ vi.mock('../../platform/actions/sms', async (importOriginal) => {
 });
 import { createFakeSmsChokepoint } from '../../platform/actions/sms/__fixtures__/fakeSmsChokepoint';
 import { sendSystemSms } from '../../platform/actions/sms';
+import * as smsActions from '../../platform/actions/sms';
 import { TwilioApiError } from '../../platform/integrations/twilio/sender';
 
 const isOnDncMock = vi.fn(async () => false);
@@ -639,6 +640,21 @@ describe('processScheduledMessages through the sms.send chokepoint', () => {
       scheduledAt,
       metadata: {},
     });
+  });
+
+  it('leaves an unknown-outcome replay awaiting its callback without marking it sent', async () => {
+    const send = vi.spyOn(smsActions, 'sendStoredSms').mockResolvedValueOnce({
+      ok: true,
+      data: { messageId: 'msg-1', status: 'sending', reason: 'SEND_OUTCOME_UNKNOWN', segments: 1, encoding: 'GSM-7' },
+    });
+    try {
+      await processScheduledMessages();
+      expect(updateMessageStatusMock).not.toHaveBeenCalled();
+      expect(logActivityMock).not.toHaveBeenCalled();
+      expect(smsFake.current!.transport.send).not.toHaveBeenCalled();
+    } finally {
+      send.mockRestore();
+    }
   });
 
   it.each([false, true])('preserves chokepoint quiet-hours deferral when activity logging rejects: %s', async (activityFails) => {
