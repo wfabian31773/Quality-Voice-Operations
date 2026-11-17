@@ -6,6 +6,7 @@ import { TwilioApiError } from '../../integrations/twilio/sender';
 import {
   actionFail,
   actionOk,
+  IDEMPOTENCY_TTL_MS,
   requestHash,
   runActionDefinition,
   type ActionContext,
@@ -118,8 +119,8 @@ export type SmsSendInput = z.infer<typeof smsSendInput>;
 
 export const smsSendOutput = z.object({
   messageId: z.string(),
-  status: z.enum(['queued', 'deferred_quiet_hours', 'suppressed']),
-  reason: z.literal('QUIET_HOURS').optional(),
+  status: z.enum(['queued', 'sending', 'deferred_quiet_hours', 'suppressed']),
+  reason: z.enum(['QUIET_HOURS', 'SEND_OUTCOME_UNKNOWN']).optional(),
   deferredUntil: z.string().optional(),
   twilioSid: z.string().optional(),
   segments: z.number().int(),
@@ -218,7 +219,9 @@ async function markTransmitFailed(
 ): Promise<void> {
   const errorMessage = result.ok ? undefined : `${result.error.code}: ${result.error.message}`.slice(0, 500);
   try {
-    await deps.store.updateOutbound(msg.tenantId, msg.id, { status: 'failed', errorMessage });
+    await deps.store.updateOutbound(msg.tenantId, msg.id, {
+      status: 'failed', errorMessage, metadata: { transmitOutcome: 'not_sent' },
+    });
   } catch (updateErr) {
     logger.error('Failed to mark SMS as failed', { tenantId: msg.tenantId, messageId: msg.id, error: String(updateErr) });
   }
@@ -226,8 +229,9 @@ async function markTransmitFailed(
 
 /**
  * Steps 6–7: Twilio send with StatusCallback, then the status update. On a
- * send error the row is marked `failed` unless `markFailed` is false (the
- * release path decides between retry and failure itself).
+ * definite send error the row is marked `failed` unless `markFailed` is false
+ * (the release path decides between retry and failure itself). Immediate
+ * ambiguous outcomes stay `sending`, allowing the StatusCallback to recover.
  *
  * Before Twilio is called, a transmit marker is committed on the row. If
  * Twilio accepts but the SID write then fails, the marker tells the release
@@ -250,7 +254,12 @@ async function transmit(
   try {
     await deps.store.updateOutbound(msg.tenantId, msg.id, {
       status: 'sending',
-      metadata: { transmitAttemptId: randomUUID(), transmitStartedAt: now.toISOString() },
+      metadata: {
+        transmitAttemptId: randomUUID(), transmitStartedAt: now.toISOString(),
+        // Commit uncertainty before the external call, so a timeout (or a
+        // failed outcome write) cannot lose the evidence needed for replay.
+        ...(markFailed ? { transmitOutcome: 'unknown' } : {}),
+      },
     });
   } catch (err) {
     // Never call Twilio without the marker on record.
@@ -271,11 +280,14 @@ async function transmit(
     });
   } catch (err) {
     const result = classifyTransportError(err);
-    if (markFailed) await markTransmitFailed(deps, msg, result);
+    if (markFailed && err instanceof TwilioApiError) await markTransmitFailed(deps, msg, result);
     return { ok: false, result };
   }
   try {
-    await deps.store.updateOutbound(msg.tenantId, msg.id, { status: 'queued', twilioSid: sent.sid, sentAt: now });
+    await deps.store.updateOutbound(msg.tenantId, msg.id, {
+      status: 'queued', twilioSid: sent.sid, sentAt: now,
+      ...(markFailed ? { metadata: { transmitOutcome: 'accepted' } } : {}),
+    });
   } catch (err) {
     // Twilio accepted the message; never report a failure that would invite a resend.
     logger.error('Twilio accepted SMS but the status update failed', {
@@ -358,6 +370,24 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
       if (!resolved.ok) return resolved.result;
       const body = resolved.body;
       const stats = bodyStats(body);
+
+      // The runtime releases retryable failures, but a transport timeout may
+      // have happened after Twilio accepted. Consult the committed message
+      // before reserving another row or applying new-send policy checks.
+      if (ctx.idempotencyKey) {
+        const prior = await deps.store.findPriorSend(
+          tx, ctx.tenantId, to, ctx.idempotencyKey, new Date(ctx.now.getTime() - IDEMPOTENCY_TTL_MS),
+        );
+        if (prior) {
+          return actionOk({
+            messageId: prior.id,
+            ...(prior.twilioSid
+              ? { status: 'queued' as const, twilioSid: prior.twilioSid }
+              : { status: 'sending' as const, reason: SMS_SEND_OUTCOME_UNKNOWN }),
+            ...bodyStats(prior.body),
+          });
+        }
+      }
 
       // 1. Tenant messaging enabled: platform switch and per-tenant flag (both default off).
       if (!deps.config.smsEnabled()) {

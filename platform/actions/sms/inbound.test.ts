@@ -440,6 +440,7 @@ async function sendViaChokepoint(state: MemoryState) {
       isTenantSender: async () => true,
       loadStoredOutbound: async () => null,
       latestConsentAction: async () => latest(),
+      findPriorSend: async () => null,
       reserveOutbound: async () => ({ reserved: true }),
       reserveDeferredSend: async () => ({ reserved: true }),
       insertOutbound: async () => {},

@@ -116,6 +116,10 @@ function keyForCall(index: number): string {
 describe('SMS inbox composer idempotency', () => {
   it.each([
     [400, { error: 'Invalid number' }],
+    [409, {
+      error: 'This message may already have been sent. Check the thread before sending again.',
+      code: 'SEND_OUTCOME_UNKNOWN', reason: 'send_outcome_unknown', messageId: 'sms-1',
+    }],
     [409, { error: 'Key reused', reason: 'idempotency_key_reused' }],
     [403, { error: 'Recipient opted out', reason: 'recipient_opted_out', code: 'RECIPIENT_OPTED_OUT' }],
     [503, { error: 'SMS service not configured', reason: 'messaging_not_enabled' }],
@@ -135,6 +139,7 @@ describe('SMS inbox composer idempotency', () => {
     await submit(input);
     const firstKey = keyForCall(0);
     expect(input.value).toBe('Thanks for your message');
+    expect(screen.getByText(String(body.error))).toBeTruthy();
 
     await submit(input);
     expect(apiMock.post).toHaveBeenCalledTimes(2);

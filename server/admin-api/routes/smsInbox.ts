@@ -409,6 +409,17 @@ const sendMessageHandler: RequestHandler = async (req, res) => {
         }
         return res.status(status).json(payload);
       }
+      if (sent.data.reason === 'SEND_OUTCOME_UNKNOWN') {
+        // This is a protected replay, not a definite rejection: keep the
+        // action result cached. 409 lets the composer retire its draft key
+        // after showing the warning, for a deliberate resend if needed.
+        return res.status(409).json({
+          error: 'This message may already have been sent. Check the thread before sending again.',
+          code: 'SEND_OUTCOME_UNKNOWN',
+          reason: 'send_outcome_unknown',
+          messageId: sent.data.messageId,
+        });
+      }
       const message = await SmsService.getMessage(tenantId, sent.data.messageId);
       if (!message) throw new Error('Sent SMS row not found');
 

@@ -63,6 +63,14 @@ export interface SmsSendStore {
   /** True when `from` is one of the tenant's own numbers. */
   isTenantSender(tx: TenantTx, tenantId: string, from: string): Promise<boolean>;
   latestConsentAction(tx: TenantTx, tenantId: string, phone: string): Promise<'opt_in' | 'opt_out' | null>;
+  /** A recent same-key send that may have reached Twilio, or already has a SID. */
+  findPriorSend(
+    tx: TenantTx,
+    tenantId: string,
+    to: string,
+    idempotencyKey: string,
+    since: Date,
+  ): Promise<{ id: string; body: string; twilioSid: string | null } | null>;
   /**
    * A stored outbound row that was never handed to Twilio (no SID, still
    * `scheduled`/`sending`, not already owned by the chokepoint), or null.
@@ -224,6 +232,22 @@ export const postgresSmsSendStore: SmsSendStore = {
       [id, tenantId, CHOKEPOINT_SOURCE],
     );
     return rows[0] ? rowToRecord(rows[0]) : null;
+  },
+
+  async findPriorSend(tx, tenantId, to, idempotencyKey, since) {
+    const { rows } = await tx.query(
+      `SELECT id, body, twilio_sid FROM sms_messages
+        WHERE tenant_id = $1 AND direction = 'outbound' AND to_number = $2 AND created_at >= $3
+          AND metadata ->> 'idempotencyKey' = $4
+          AND (twilio_sid IS NOT NULL
+            OR (metadata ->> 'transmitAttemptId' <> ''
+                AND metadata ->> 'transmitOutcome' = 'unknown'))
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [tenantId, to, since, idempotencyKey],
+    );
+    const row = rows[0];
+    return row ? { id: row.id as string, body: row.body as string, twilioSid: row.twilio_sid as string | null } : null;
   },
 
   async reserveOutbound(record, limit) {

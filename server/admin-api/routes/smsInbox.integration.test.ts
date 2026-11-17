@@ -9,8 +9,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import { randomUUID } from 'node:crypto';
 import { Client, Pool } from 'pg';
 import { DataType, newDb } from 'pg-mem';
-import express, { type Request, type Response, type NextFunction } from 'express';
-import request from 'supertest';
+import type { Request, Response, NextFunction } from 'express';
 import type { ActionRuntime } from '../../../platform/actions/core/runtime';
 import { TwilioApiError } from '../../../platform/integrations/twilio/sender';
 import { smsInboxReplyIdempotencyKey } from './smsInboxSchemas';
@@ -161,11 +160,21 @@ vi.mock('../middleware/rbac', () => ({
 
 import smsInboxRouter from './smsInbox';
 
-function buildApp(): express.Express {
-  const app = express();
-  app.use(express.json());
-  app.use(smsInboxRouter);
-  return app;
+// Like postScheduled below, exercise the real handler without a local listener.
+async function postReply(body = 'Thanks for booking', key?: string) {
+  const route = smsInboxRouter.stack.find((layer) =>
+    layer.route?.path === '/sms-inbox/threads/:id/messages' && layer.route.stack.some((entry) => entry.method === 'post'),
+  )!.route!;
+  const res = {
+    statusCode: 200, body: {} as Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+    status(code: number) { this.statusCode = code; return this; },
+    json(value: Record<string, unknown>) { this.body = value; return this; },
+  };
+  await route.stack.at(-1)!.handle({
+    params: { id: 'conv-1' }, body: { body }, headers: key ? { 'idempotency-key': key } : {},
+    user: { tenantId: 'tenant-1', userId: 'user-1', email: 'op@example.com', role: 'tenant_owner' },
+  } as unknown as Request, res as unknown as Response, vi.fn());
+  return { status: res.statusCode, body: res.body };
 }
 
 const conversation = {
@@ -206,11 +215,7 @@ beforeEach(() => {
 
 describe('POST /sms-inbox/threads/:id/messages through sms.send', () => {
   it('sends one SMS and returns the same body when the Idempotency-Key is replayed', async () => {
-    const post = () =>
-      request(buildApp())
-        .post('/sms-inbox/threads/conv-1/messages')
-        .set('Idempotency-Key', 'owner-double-click')
-        .send({ body: 'Thanks for booking' });
+    const post = () => postReply('Thanks for booking', 'owner-double-click');
 
     const first = await post();
     const second = await post();
@@ -225,7 +230,7 @@ describe('POST /sms-inbox/threads/:id/messages through sms.send', () => {
 
   it('returns 403 with the chokepoint opt-out reason and never calls Twilio', async () => {
     smsFake.current!.state.optedOut.add('+15555550142');
-    const res = await request(buildApp()).post('/sms-inbox/threads/conv-1/messages').send({ body: 'Hi there' });
+    const res = await postReply('Hi there');
     expect(res.status).toBe(403);
     expect(res.body).toMatchObject({
       error: 'Recipient has opted out of SMS',
@@ -240,11 +245,7 @@ describe('POST /sms-inbox/threads/:id/messages through sms.send', () => {
 
   it('marks a Twilio auth rejection final and lets the same key send after credentials are fixed', async () => {
     smsFake.current!.state.sendError = new TwilioApiError('Twilio API error: 401 Authenticate', 401, 20003);
-    const post = () =>
-      request(buildApp())
-        .post('/sms-inbox/threads/conv-1/messages')
-        .set('Idempotency-Key', 'auth-retry')
-        .send({ body: 'Thanks for booking' });
+    const post = () => postReply('Thanks for booking', 'auth-retry');
 
     const first = await post();
     expect(first.status).toBe(422);
@@ -264,11 +265,7 @@ describe('POST /sms-inbox/threads/:id/messages through sms.send', () => {
   });
 
   it('keeps a successful send replayable after a same-key different-body conflict', async () => {
-    const send = (body: string) =>
-      request(buildApp())
-        .post('/sms-inbox/threads/conv-1/messages')
-        .set('Idempotency-Key', 'owner-double-click')
-        .send({ body });
+    const send = (body: string) => postReply(body, 'owner-double-click');
 
     const first = await send('Thanks for booking');
     expect(first.status).toBe(200);
@@ -286,18 +283,37 @@ describe('POST /sms-inbox/threads/:id/messages through sms.send', () => {
     expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(1);
   });
 
-  it('returns 500 without a final marker for an ambiguous Twilio failure', async () => {
+  it('returns 500 without a final marker for a definite retryable Twilio failure', async () => {
     smsFake.current!.state.sendError = new TwilioApiError('Twilio API error: 503 Service Unavailable', 503, null);
-    const res = await request(buildApp())
-      .post('/sms-inbox/threads/conv-1/messages')
-      .set('Idempotency-Key', 'timeout-retry')
-      .send({ body: 'Thanks for booking' });
+    const res = await postReply('Thanks for booking', 'timeout-retry');
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'Failed to send message: Twilio API error: 503 Service Unavailable' });
     expect(res.body.final).toBeUndefined();
     expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(1);
     expect(logActivityMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('ambiguous inbox reply replay', () => {
+  it('warns with the original messageId on a timeout retry and never sends a second SMS', async () => {
+    smsFake.current!.state.sendError = new Error('timeout');
+    const post = () => postReply('Thanks for booking', 'timeout');
+    expect((await post()).status).toBe(500);
+    smsFake.current!.state.sendError = null;
+    const replay = await post();
+    expect(replay.status).toBe(409);
+    expect(replay.body).toEqual({
+      error: 'This message may already have been sent. Check the thread before sending again.',
+      code: 'SEND_OUTCOME_UNKNOWN', reason: 'send_outcome_unknown', messageId: 'sms-1',
+    });
+    expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(1);
+    expect(smsFake.current!.rows.size).toBe(1);
+    expect(logActivityMock).not.toHaveBeenCalled();
+    expect((await post()).body).toEqual(replay.body);
+    const deliberate = await postReply('Thanks for booking', 'deliberate-resend');
+    expect(deliberate.status).toBe(200);
+    expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(2);
   });
 });
 
