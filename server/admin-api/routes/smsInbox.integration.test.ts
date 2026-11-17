@@ -296,6 +296,30 @@ describe('POST /sms-inbox/threads/:id/messages through sms.send', () => {
 });
 
 describe('ambiguous inbox reply replay', () => {
+  it('preserves the timeout warning for the original payload after a changed-payload conflict', async () => {
+    smsFake.current!.state.sendError = new TwilioSendOutcomeUnknownError(new Error('timeout'));
+    const post = (body: string) => postReply(body, 'timeout-payload-conflict');
+    expect((await post('Thanks for booking')).status).toBe(500);
+    smsFake.current!.state.sendError = null;
+
+    const conflict = await post('A different reply');
+    expect(conflict.status).toBe(409);
+    expect(conflict.body).toMatchObject({
+      code: 'IDEMPOTENCY_KEY_REUSED', reason: 'idempotency_key_reused', final: true,
+    });
+
+    const replay = await post('Thanks for booking');
+    expect(replay.status).toBe(409);
+    expect(replay.body).toEqual({
+      error: 'This message may already have been sent. Check the thread before sending again.',
+      code: 'SEND_OUTCOME_UNKNOWN', reason: 'send_outcome_unknown', messageId: 'sms-1',
+    });
+    expect(smsFake.current!.transport.send).toHaveBeenCalledTimes(1);
+    expect(smsFake.current!.store.reserveOutbound).toHaveBeenCalledTimes(1);
+    expect(smsFake.current!.rows.size).toBe(1);
+    expect(logActivityMock).not.toHaveBeenCalled();
+  });
+
   it('warns with the original messageId on a timeout retry and never sends a second SMS', async () => {
     smsFake.current!.state.sendError = new TwilioSendOutcomeUnknownError(new Error('timeout'));
     const post = () => postReply('Thanks for booking', 'timeout');

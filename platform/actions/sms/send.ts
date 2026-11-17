@@ -382,7 +382,10 @@ export function createSmsSendAction(deps: SmsSendDeps = defaultSmsSendDeps): Act
         );
         if (prior) {
           if (!prior.requestHash || prior.requestHash !== hash) {
-            return actionFail('IDEMPOTENCY_KEY_REUSED', 'Idempotency key was reused with a different payload');
+            // Release this claim so the original payload can still replay its prior send.
+            return actionFail('IDEMPOTENCY_KEY_REUSED', 'Idempotency key was reused with a different payload', {
+              retryable: true,
+            });
           }
           return actionOk({
             messageId: prior.id,

@@ -848,7 +848,7 @@ describe('sms.send chokepoint', () => {
         t.records.get('msg-1')!.twilioSid = sid;
         expect(await t.asActor(owner, { ...input, ...changed }, DAYTIME, 'changed')).toMatchObject({
           ok: false,
-          error: { code: 'IDEMPOTENCY_KEY_REUSED', message: 'Idempotency key was reused with a different payload', retryable: false },
+          error: { code: 'IDEMPOTENCY_KEY_REUSED', message: 'Idempotency key was reused with a different payload', retryable: true },
         });
         expect(t.transport.send).toHaveBeenCalledTimes(1);
         expect(t.records.size).toBe(1);
@@ -861,7 +861,7 @@ describe('sms.send chokepoint', () => {
       await t.system({ idempotencyKey: 'legacy' });
       delete t.records.get('msg-1')!.metadata.requestHash;
       expect(await t.system({ idempotencyKey: 'legacy' })).toMatchObject({
-        ok: false, error: { code: 'IDEMPOTENCY_KEY_REUSED', retryable: false },
+        ok: false, error: { code: 'IDEMPOTENCY_KEY_REUSED', retryable: true },
       });
       expect(t.transport.send).toHaveBeenCalledTimes(1);
     });
