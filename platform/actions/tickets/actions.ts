@@ -23,7 +23,7 @@ import { createFloorAction, type CallerNumberDecrypter } from './floor';
 import { validateIntake } from './intake';
 import { intakeSchemaFor } from './intakeSchemas';
 import { buildOpenReadback, normalizePhone } from './readback';
-import { sqlTicketsRepo, type NewActivity, type TicketPatch, type TicketRecord, type TicketsRepoFactory } from './repo';
+import { sqlTicketsRepo, type NewActivity, type TicketPatch, type TicketRecord, type TicketsRepo, type TicketsRepoFactory } from './repo';
 import { priorityFor, resolveSla } from './sla';
 import {
   ACTIVE_STATUSES,
@@ -58,6 +58,8 @@ export const MERGE = 'tickets.merge';
 const WRITE_ROLES = ['tenant_owner', 'operations_manager'];
 /** Newest-N cap for `tickets.get` only. Merge uses `TicketsRepo.allNotes` so none are dropped. */
 const NOTES_LIMIT = 50;
+const MERGE_PARENT_HOPS = 20;
+const MERGE_LOCK_ATTEMPTS = 3;
 
 export interface TicketsActionDeps {
   repo?: TicketsRepoFactory;
@@ -190,6 +192,31 @@ function openTicketInput(ctx: ActionContext, input: OpenPrepareActionInput): Ope
   if (ctx.actor.type === 'agent' && MESSAGE_KINDS.has(input.kind)) return enforceMessageContract(ctx, input);
   const strict = openPrepareInput.safeParse(input);
   return strict.success ? strict.data : validationFailure(strict.error);
+}
+
+async function mergeSurvivor(
+  repo: TicketsRepo,
+  id: string,
+  field: 'sourceId' | 'targetId',
+): Promise<TicketRecord | ActionResult<never>> {
+  const visited = new Set<string>();
+  for (let hops = 0; hops <= MERGE_PARENT_HOPS; hops++) {
+    if (visited.has(id)) {
+      return actionFail('VALIDATION_FAILED', 'Ticket parent chain contains a cycle', {
+        field,
+        callerSafeMessage: "That ticket's merge history could not be resolved.",
+      });
+    }
+    visited.add(id);
+    const ticket = await repo.get(id);
+    if (!ticket) return actionFail('NOT_FOUND', 'Ticket not found', { field });
+    if (!ticket.parentTicketId) return ticket;
+    id = ticket.parentTicketId;
+  }
+  return actionFail('VALIDATION_FAILED', 'Ticket parent chain is too long', {
+    field,
+    callerSafeMessage: "That ticket's merge history could not be resolved.",
+  });
 }
 
 export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDefinition[] {
@@ -525,29 +552,51 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
     permissions: { roles: WRITE_ROLES, mcpScope: 'qvo:admin' },
     async run(ctx, input, tx) {
       const repo = repoFor(tx, ctx.tenantId);
-      const [firstId, secondId] =
-        input.sourceId < input.targetId ? [input.sourceId, input.targetId] : [input.targetId, input.sourceId];
-      const first = await repo.get(firstId, { forUpdate: true });
-      const second = await repo.get(secondId, { forUpdate: true });
-      const source = input.sourceId === firstId ? first : second;
-      const target = input.targetId === firstId ? first : second;
-      if (!source) return actionFail('NOT_FOUND', 'Ticket not found', { field: 'sourceId' });
-      if (!target) return actionFail('NOT_FOUND', 'Ticket not found', { field: 'targetId' });
+      const output = (sourceId: string, targetId: string) => ({
+        sourceId,
+        targetId,
+        merged: true as const,
+        ...(sourceId === input.sourceId ? {} : { requestedSourceId: input.sourceId }),
+        ...(targetId === input.targetId ? {} : { requestedTargetId: input.targetId }),
+      });
+      let source: TicketRecord | undefined;
+      let target: TicketRecord | undefined;
+      for (let attempt = 0; attempt < MERGE_LOCK_ATTEMPTS; attempt++) {
+        const resolvedSource = await mergeSurvivor(repo, input.sourceId, 'sourceId');
+        if (isActionFailure(resolvedSource)) return resolvedSource;
+        const resolvedTarget = await mergeSurvivor(repo, input.targetId, 'targetId');
+        if (isActionFailure(resolvedTarget)) return resolvedTarget;
+        // Already under the same survivor: nothing to merge. Keep the caller's
+        // source id so re-running the same pair returns the same result as before.
+        if (resolvedSource.id === resolvedTarget.id) return actionOk(output(input.sourceId, resolvedTarget.id));
 
-      const alreadyMerged = source.parentTicketId === target.id;
-      if (alreadyMerged) {
-        return actionOk({ sourceId: source.id, targetId: target.id, merged: true as const });
+        // Roll back stale attempts to release their locks before locking a new
+        // sorted pair; retaining old locks could invert the order across retries.
+        await tx.query('SAVEPOINT tickets_merge_locks');
+        const [firstId, secondId] = [resolvedSource.id, resolvedTarget.id].sort();
+        const first = await repo.get(firstId, { forUpdate: true });
+        const second = await repo.get(secondId, { forUpdate: true });
+        const lockedSource = resolvedSource.id === firstId ? first : second;
+        const lockedTarget = resolvedTarget.id === firstId ? first : second;
+        if (!lockedSource || !lockedTarget) {
+          await tx.query('ROLLBACK TO SAVEPOINT tickets_merge_locks');
+          await tx.query('RELEASE SAVEPOINT tickets_merge_locks');
+          return actionFail('NOT_FOUND', 'Ticket not found', { field: !lockedSource ? 'sourceId' : 'targetId' });
+        }
+        if (lockedSource.parentTicketId || lockedTarget.parentTicketId) {
+          await tx.query('ROLLBACK TO SAVEPOINT tickets_merge_locks');
+          await tx.query('RELEASE SAVEPOINT tickets_merge_locks');
+          continue;
+        }
+        await tx.query('RELEASE SAVEPOINT tickets_merge_locks');
+        source = lockedSource;
+        target = lockedTarget;
+        break;
       }
-      if (source.parentTicketId) {
-        return actionFail('VALIDATION_FAILED', 'Source ticket was already merged away', {
-          field: 'sourceId',
-          callerSafeMessage: 'That ticket was already merged.',
-        });
-      }
-      if (target.parentTicketId) {
-        return actionFail('VALIDATION_FAILED', 'Target ticket was already merged away', {
-          field: 'targetId',
-          callerSafeMessage: 'That ticket was already merged.',
+      if (!source || !target) {
+        return actionFail('CONFLICT', 'Ticket survivors changed during merge', {
+          retryable: true,
+          callerSafeMessage: 'Those tickets changed while merging. Please try again.',
         });
       }
       if (target.status === 'closed') {
@@ -593,7 +642,7 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
       });
       await repo.update(source.id, { status: 'closed', parentTicketId: target.id }, ctx.now);
       await repo.update(target.id, {}, ctx.now);
-      return actionOk({ sourceId: source.id, targetId: target.id, merged: true as const });
+      return actionOk(output(source.id, target.id));
     },
   });
 

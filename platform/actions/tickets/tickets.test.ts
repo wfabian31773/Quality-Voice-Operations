@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { createMemoryStore, runAction, toAgentToolSchema, type ActionContext, type ActionResult } from '../core';
+import { createMemoryStore, runAction, toAgentToolSchema, type ActionContext, type ActionResult, type TenantTx } from '../core';
 import { createMemoryTicketsRepo } from './__fixtures__/memoryRepo';
 import { createTicketsActions, MERGE, OPEN_COMMIT, OPEN_PREPARE } from './actions';
 import { ticketsActions } from './index';
 import { buildOpenReadback, normalizePhone, phoneDigitGroups } from './readback';
-import { advisoryLockKey, parseTicketSettings } from './repo';
+import { advisoryLockKey, parseTicketSettings, type TicketsRepoFactory } from './repo';
 import { validateIntake } from './intake';
 import { DEFAULT_INTAKE_SCHEMAS, intakeSchemaFor } from './intakeSchemas';
 import { canTransition, STATUS_TRANSITIONS, TICKET_KINDS, TICKET_STATUSES } from './schemas';
@@ -39,10 +39,10 @@ function ownerCtx(overrides: Partial<ActionContext> = {}): ActionContext {
   return agentCtx({ actor: { type: 'user', id: 'owner-1', role: 'tenant_owner' }, callId: undefined, ...overrides });
 }
 
-function setup() {
+function setup(wrapRepo: (repo: TicketsRepoFactory) => TicketsRepoFactory = (repo) => repo) {
   const store = createMemoryStore();
   const tickets = createMemoryTicketsRepo();
-  const registry = createTicketsActions({ repo: tickets.repo });
+  const registry = createTicketsActions({ repo: wrapRepo(tickets.repo) });
   const deps = { store, registry, withTenantTx: store.withTenantTx.bind(store) };
   // Each prepare is a fresh agent turn, so it gets its own idempotency key.
   const run = (name: string, ctx: ActionContext, input: unknown) =>
@@ -850,8 +850,8 @@ describe('tickets.list and tickets.get', () => {
 });
 
 describe('tickets.merge', () => {
-  async function twoTickets() {
-    const env = setup();
+  async function twoTickets(wrapRepo?: (repo: TicketsRepoFactory) => TicketsRepoFactory) {
+    const env = setup(wrapRepo);
     const source = data<Committed>((await prepareAndCommit(env.run, baseInput({ subject: 'duplicate sink' }))).committed);
     const target = data<Committed>(
       (await prepareAndCommit(env.run, baseInput({ subject: 'the leaking sink' }), agentCtx({ callId: 'call-2' }))).committed,
@@ -860,6 +860,30 @@ describe('tickets.merge', () => {
     const merge = (input: Record<string, unknown>, ctx: Partial<ActionContext> = {}) =>
       env.run(MERGE, ownerCtx({ idempotencyKey: `m${(key += 1)}`, ...ctx }), input);
     return { ...env, sourceId: source.ticketId, targetId: target.ticketId, merge };
+  }
+
+  async function thirdTicket(env: Awaited<ReturnType<typeof twoTickets>>) {
+    return data<Committed>(
+      (await prepareAndCommit(env.run, baseInput({ subject: 'third ticket', customer: { name: 'Test caller', phone: '555-010-0200' } }), agentCtx({ callId: 'call-3' }))).committed,
+    ).ticketId;
+  }
+
+  function writes(tickets: ReturnType<typeof setup>['tickets']) {
+    const { tickets: rows, activities, outbox, slaInstances, firstResponseAt } = tickets.state;
+    return structuredClone({ rows, activities, outbox, slaInstances, firstResponseAt });
+  }
+
+  function onRowLock(hook: (id: string) => void): (repo: TicketsRepoFactory) => TicketsRepoFactory {
+    return (repoFor) => (tx, tenantId) => {
+      const repo = repoFor(tx, tenantId);
+      return {
+        ...repo,
+        async get(id, opts) {
+          if (opts?.forUpdate) hook(id);
+          return repo.get(id, opts);
+        },
+      };
+    };
   }
 
   it('closes the source under the target, writes merged activity on both, and carries source notes', async () => {
@@ -918,28 +942,258 @@ describe('tickets.merge', () => {
   it('re-running the same merge is a no-op success', async () => {
     const { tickets, sourceId, targetId, merge } = await twoTickets();
     data(await merge({ sourceId, targetId }));
-    const activities = tickets.state.activities.length;
+    const before = writes(tickets);
     const again = data<{ merged: true }>(await merge({ sourceId, targetId }));
     expect(again).toEqual({ sourceId, targetId, merged: true });
-    expect(tickets.state.activities).toHaveLength(activities);
+    expect(writes(tickets)).toEqual(before);
     expect(tickets.state.tickets.filter((t) => t.status === 'closed')).toHaveLength(1);
   });
 
-  it('rejects a closed target, a ticket already merged away, and the same id twice', async () => {
-    const { run, sourceId, targetId, merge } = await twoTickets();
+  it('rejects a closed target and the same id twice, but redirects a ticket already merged away', async () => {
+    const { tickets, run, sourceId, targetId, merge } = await twoTickets();
     data(await run('tickets.update', ownerCtx({ idempotencyKey: 'close-t' }), { ticketId: targetId, status: 'closed' }));
+    const before = writes(tickets);
     expectFail(await merge({ sourceId, targetId }), 'VALIDATION_FAILED', 'targetId');
+    expect(writes(tickets)).toEqual(before);
 
     const env = await twoTickets();
     data(await env.merge({ sourceId: env.sourceId, targetId: env.targetId }));
-    const third = data<Committed>(
-      (await prepareAndCommit(env.run, baseInput({ subject: 'another' }), agentCtx({ callId: 'call-3' }))).committed,
-    );
-    expectFail(await env.merge({ sourceId: env.sourceId, targetId: third.ticketId }), 'VALIDATION_FAILED', 'sourceId');
-    expectFail(await env.merge({ sourceId: third.ticketId, targetId: env.sourceId }), 'VALIDATION_FAILED', 'targetId');
+    const thirdId = await thirdTicket(env);
+    expect(data(await env.merge({ sourceId: env.sourceId, targetId: thirdId }))).toEqual({
+      sourceId: env.targetId, targetId: thirdId, requestedSourceId: env.sourceId, merged: true,
+    });
+    const mergedBefore = writes(env.tickets);
+    expect(data(await env.merge({ sourceId: thirdId, targetId: env.sourceId }))).toEqual({
+      sourceId: thirdId, targetId: thirdId, requestedTargetId: env.sourceId, merged: true,
+    });
+    expect(writes(env.tickets)).toEqual(mergedBefore);
 
     const { merge: mergeSame } = await twoTickets();
     expectFail(await mergeSame({ sourceId: 'same', targetId: 'same' }), 'VALIDATION_FAILED', 'sourceId');
+  });
+
+  it('redirects a merged-away target and copies notes onto its survivor', async () => {
+    const env = await twoTickets();
+    const { sourceId: a, targetId: b, tickets, merge, run } = env;
+    data(await merge({ sourceId: a, targetId: b }));
+    const c = await thirdTicket(env);
+    data(await run('tickets.add_note', ownerCtx({ idempotencyKey: 'redirect-note' }), { ticketId: c, note: 'Duplicate details' }));
+    const beforeLocks = tickets.state.rowLocks.length;
+
+    expect(data(await merge({ sourceId: c, targetId: a }))).toEqual({
+      sourceId: c, targetId: b, requestedTargetId: a, merged: true,
+    });
+    expect(tickets.state.tickets.find((t) => t.id === c)).toMatchObject({ status: 'closed', parentTicketId: b });
+    expect(tickets.state.activities).toContainEqual(expect.objectContaining({
+      ticketId: b, type: 'note', content: 'Duplicate details', metadata: { mergedFrom: c },
+    }));
+    expect(tickets.state.activities.filter((activity) => activity.type === 'merged')).toHaveLength(4);
+    expect(tickets.state.rowLocks.slice(beforeLocks)).toEqual([b, c].sort().map((id) => `${TENANT}\0${id}`));
+  });
+
+  it('redirects a merged-away source and merges its survivor with all carried notes', async () => {
+    const env = await twoTickets();
+    const { sourceId: a, targetId: b, tickets, merge, run } = env;
+    data(await run('tickets.add_note', ownerCtx({ idempotencyKey: 'source-note' }), { ticketId: a, note: 'Original details' }));
+    data(await merge({ sourceId: a, targetId: b }));
+    const c = await thirdTicket(env);
+
+    expect(data(await merge({ sourceId: a, targetId: c }))).toEqual({
+      sourceId: b, targetId: c, requestedSourceId: a, merged: true,
+    });
+    expect(tickets.state.tickets.find((t) => t.id === b)).toMatchObject({ status: 'closed', parentTicketId: c });
+    expect(tickets.state.tickets.find((t) => t.id === a)?.parentTicketId).toBe(b);
+    expect(tickets.state.activities).toContainEqual(expect.objectContaining({
+      ticketId: c, type: 'note', content: 'Original details', metadata: { mergedFrom: b },
+    }));
+    expect(tickets.state.activities.filter((activity) => activity.type === 'merged')).toHaveLength(4);
+  });
+
+  it('treats either direction of a multi-hop chain as a no-op without writes', async () => {
+    const env = await twoTickets();
+    const { sourceId: a, targetId: b, tickets, merge } = env;
+    const c = await thirdTicket(env);
+    data(await merge({ sourceId: a, targetId: b }));
+    data(await merge({ sourceId: b, targetId: c }));
+    const before = writes(tickets);
+
+    expect(data(await merge({ sourceId: a, targetId: c }))).toEqual({
+      sourceId: a, targetId: c, merged: true,
+    });
+    expect(writes(tickets)).toEqual(before);
+    expect(data(await merge({ sourceId: c, targetId: a }))).toEqual({
+      sourceId: c, targetId: c, requestedTargetId: a, merged: true,
+    });
+    expect(writes(tickets)).toEqual(before);
+    expect(data(await merge({ sourceId: a, targetId: b }))).toEqual({
+      sourceId: a, targetId: c, requestedTargetId: b, merged: true,
+    });
+    expect(writes(tickets)).toEqual(before);
+  });
+
+  it('rejects a closed target survivor without writes', async () => {
+    const env = await twoTickets();
+    const { sourceId: a, targetId: b, tickets, merge, run } = env;
+    const c = await thirdTicket(env);
+    data(await merge({ sourceId: a, targetId: b }));
+    data(await run('tickets.update', ownerCtx({ idempotencyKey: 'close-survivor' }), { ticketId: b, status: 'closed' }));
+    const before = writes(tickets);
+    const result = await merge({ sourceId: c, targetId: a });
+    expectFail(result, 'VALIDATION_FAILED', 'targetId');
+    expect(!result.ok && result.error.callerSafeMessage).toBe('That ticket is closed.');
+    expect(writes(tickets)).toEqual(before);
+  });
+
+  it.each(['sourceId', 'targetId'] as const)('rejects a parent cycle on %s without writes', async (field) => {
+    const env = await twoTickets();
+    const { sourceId: a, targetId: b, tickets, merge } = env;
+    const c = await thirdTicket(env);
+    tickets.state.tickets.find((t) => t.id === a)!.parentTicketId = b;
+    tickets.state.tickets.find((t) => t.id === b)!.parentTicketId = a;
+    const before = writes(tickets);
+    const result = await merge(field === 'sourceId' ? { sourceId: a, targetId: c } : { sourceId: c, targetId: a });
+    expectFail(result, 'VALIDATION_FAILED', field);
+    expect(!result.ok && result.error.callerSafeMessage).toBeTruthy();
+    expect(!result.ok && result.error.message).toMatch(/cycle/i);
+    expect(writes(tickets)).toEqual(before);
+  });
+
+  it.each(['sourceId', 'targetId'] as const)('returns NOT_FOUND for a missing or foreign parent on %s without writes', async (field) => {
+    for (const foreign of [false, true]) {
+      const env = await twoTickets();
+      const { sourceId: a, targetId: b, tickets, merge } = env;
+      const c = await thirdTicket(env);
+      tickets.state.tickets.find((t) => t.id === a)!.parentTicketId = foreign ? b : 'missing-parent';
+      if (foreign) tickets.state.tickets.find((t) => t.id === b)!.tenantId = OTHER;
+      const before = writes(tickets);
+      expectFail(await merge(field === 'sourceId' ? { sourceId: a, targetId: c } : { sourceId: c, targetId: a }), 'NOT_FOUND', field);
+      expect(writes(tickets)).toEqual(before);
+    }
+  });
+
+  it('allows 20 parent hops and rejects a longer chain without writes', async () => {
+    const env = await twoTickets();
+    const { sourceId, targetId, tickets, merge } = env;
+    const first = tickets.state.tickets.find((t) => t.id === sourceId)!;
+    let previous = first;
+    for (let i = 1; i <= 21; i++) {
+      const next = { ...first, id: `chain-${i}`, parentTicketId: null };
+      previous.parentTicketId = next.id;
+      tickets.state.tickets.push(next);
+      previous = next;
+    }
+    const before = writes(tickets);
+    const tooLong = await merge({ sourceId, targetId });
+    expectFail(tooLong, 'VALIDATION_FAILED', 'sourceId');
+    expect(!tooLong.ok && tooLong.error.callerSafeMessage).toBeTruthy();
+    expect(!tooLong.ok && tooLong.error.message).toMatch(/chain.*long/i);
+    expect(writes(tickets)).toEqual(before);
+    expect(data(await merge({ sourceId: 'chain-1', targetId }))).toEqual({
+      sourceId: 'chain-21', targetId, requestedSourceId: 'chain-1', merged: true,
+    });
+  });
+
+  it.each(['sourceId', 'targetId'] as const)('retries when %s gains a parent before the survivor locks', async (field) => {
+    let beforeLock = (_id: string) => {};
+    const env = await twoTickets(onRowLock((id) => beforeLock(id)));
+    const { sourceId, targetId, tickets, merge } = env;
+    const survivorId = await thirdTicket(env);
+    const staleId = field === 'sourceId' ? sourceId : targetId;
+    beforeLock = () => {
+      beforeLock = () => {};
+      Object.assign(tickets.state.tickets.find((t) => t.id === staleId)!, { status: 'closed', parentTicketId: survivorId });
+    };
+    expect(data(await merge({ sourceId, targetId }))).toEqual({
+      sourceId: field === 'sourceId' ? survivorId : sourceId,
+      targetId: field === 'targetId' ? survivorId : targetId,
+      [field === 'sourceId' ? 'requestedSourceId' : 'requestedTargetId']: staleId,
+      merged: true,
+    });
+    const finalPair = [survivorId, field === 'sourceId' ? targetId : sourceId].sort();
+    expect(tickets.state.rowLocks).toEqual([...[sourceId, targetId].sort(), ...finalPair].map((id) => `${TENANT}\0${id}`));
+    expect(tickets.state.activities.filter((activity) => activity.type === 'merged')).toHaveLength(2);
+  });
+
+  it('a concurrent merge of the same pair becomes a no-op without duplicate writes', async () => {
+    let beforeLock = (_id: string) => {};
+    const env = await twoTickets(onRowLock((id) => beforeLock(id)));
+    const { sourceId, targetId, tickets, merge } = env;
+    let afterConcurrent: ReturnType<typeof writes>;
+    beforeLock = () => {
+      beforeLock = () => {};
+      Object.assign(tickets.state.tickets.find((t) => t.id === sourceId)!, { status: 'closed', parentTicketId: targetId });
+      afterConcurrent = writes(tickets);
+    };
+    expect(data(await merge({ sourceId, targetId }))).toEqual({ sourceId, targetId, merged: true });
+    expect(writes(tickets)).toEqual(afterConcurrent!);
+  });
+
+  it('releases stale survivor locks before acquiring the next sorted pair', async () => {
+    const env = await twoTickets();
+    const { sourceId, targetId, tickets, store } = env;
+    const survivorId = await thirdTicket(env);
+    const events: string[] = [];
+    let raced = false;
+    const repoFor: TicketsRepoFactory = (tx, tenantId) => {
+      const repo = tickets.repo(tx, tenantId);
+      return {
+        ...repo,
+        async get(id, opts) {
+          if (opts?.forUpdate) {
+            events.push(`lock ${id}`);
+            if (!raced) {
+              raced = true;
+              Object.assign(tickets.state.tickets.find((t) => t.id === sourceId)!, { status: 'closed', parentTicketId: survivorId });
+            }
+          }
+          return repo.get(id, opts);
+        },
+      };
+    };
+    data(await runAction(MERGE, ownerCtx({ idempotencyKey: 'lock-retry' }), { sourceId, targetId }, {
+      store,
+      registry: createTicketsActions({ repo: repoFor }),
+      withTenantTx: async <T>(_tenantId: string, fn: (tx: TenantTx) => Promise<T>) => fn({
+        query: async (sql) => {
+          events.push(sql);
+          return { rows: [], rowCount: 0 };
+        },
+      }),
+    }));
+    const start = events.indexOf('SAVEPOINT tickets_merge_locks');
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(events.slice(start, start + 9)).toEqual([
+      'SAVEPOINT tickets_merge_locks',
+      ...[sourceId, targetId].sort().map((id) => `lock ${id}`),
+      'ROLLBACK TO SAVEPOINT tickets_merge_locks',
+      'RELEASE SAVEPOINT tickets_merge_locks',
+      'SAVEPOINT tickets_merge_locks',
+      ...[survivorId, targetId].sort().map((id) => `lock ${id}`),
+      'RELEASE SAVEPOINT tickets_merge_locks',
+    ]);
+  });
+
+  it('returns CONFLICT after three stale lock attempts without merge writes', async () => {
+    let beforeLock = (_id: string) => {};
+    const env = await twoTickets(onRowLock((id) => beforeLock(id)));
+    const { sourceId, targetId, tickets, merge } = env;
+    let currentId = sourceId;
+    let attempts = 0;
+    let afterConcurrent: ReturnType<typeof writes>;
+    beforeLock = (id) => {
+      if (id !== currentId) return;
+      const row = tickets.state.tickets.find((t) => t.id === currentId)!;
+      const nextId = `concurrent-${++attempts}`;
+      tickets.state.tickets.push({ ...row, id: nextId, parentTicketId: null });
+      Object.assign(row, { status: 'closed', parentTicketId: nextId });
+      currentId = nextId;
+      afterConcurrent = writes(tickets);
+    };
+    const result = await merge({ sourceId, targetId });
+    expectFail(result, 'CONFLICT');
+    expect(!result.ok && result.error.callerSafeMessage).toBeTruthy();
+    expect(attempts).toBe(3);
+    expect(writes(tickets)).toEqual(afterConcurrent!);
   });
 
   it('is UI/MCP only and returns NOT_FOUND across tenants without writing', async () => {

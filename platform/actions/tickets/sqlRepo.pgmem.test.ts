@@ -89,10 +89,11 @@ const SCHEMA = `
   );
 `;
 
-/** pg-mem lacks row locks; strip FOR UPDATE at the client boundary only. */
+/** pg-mem lacks row locks and savepoints; real concurrency is covered on Postgres. */
 function pgMemTx(client: { query: (sql: string, values?: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number | null }> }): TenantTx {
   return {
     query: async (sql, values) => {
+      if (/^(SAVEPOINT|ROLLBACK TO SAVEPOINT|RELEASE SAVEPOINT)\b/.test(sql)) return { rows: [], rowCount: 0 };
       const result = await client.query(sql.replace(/\s+FOR UPDATE\b/g, ''), values);
       return { rows: result.rows as Record<string, unknown>[], rowCount: result.rowCount };
     },
@@ -489,5 +490,101 @@ describe('sqlTicketsRepo on pg-mem', () => {
     expect(carried[0].content).toContain('note 0');
     expect(carried[0].content).toContain('note 54');
     expect(carried[0].content.split('\n\n')).toHaveLength(55);
+  });
+
+  describe('merge survivor resolution', () => {
+    async function fixture() {
+      const [a, b, c] = [randomUUID(), randomUUID(), randomUUID()];
+      for (const id of [a, b, c]) {
+        await tx.query(`INSERT INTO tickets (id, tenant_id, subject, created_at, updated_at) VALUES ($1, $2, 'Test ticket', $3, $3)`, [id, TENANT, NOW]);
+      }
+      const merge = (sourceId: string, targetId: string) =>
+        run('tickets.merge', owner({ idempotencyKey: randomUUID() }), { sourceId, targetId });
+      return { a, b, c, merge };
+    }
+
+    async function writes() {
+      return {
+        tickets: (await tx.query(`SELECT * FROM tickets ORDER BY id`)).rows,
+        activities: (await tx.query(`SELECT * FROM ticket_activity_log ORDER BY id`)).rows,
+        outbox: (await tx.query(`SELECT * FROM ticket_outbox ORDER BY id`)).rows,
+        sla: (await tx.query(`SELECT * FROM ticket_sla_instances ORDER BY id`)).rows,
+      };
+    }
+
+    it('redirects a merged-away target and copies notes onto its survivor', async () => {
+      const { a, b, c, merge } = await fixture();
+      ok(await merge(a, b));
+      ok(await run('tickets.add_note', owner({ idempotencyKey: randomUUID() }), { ticketId: c, note: 'Duplicate details' }));
+      expect(ok(await merge(c, a))).toEqual({ sourceId: c, targetId: b, requestedTargetId: a, merged: true });
+      expect((await tx.query(`SELECT status, parent_ticket_id FROM tickets WHERE id = $1`, [c])).rows).toEqual([
+        { status: 'closed', parent_ticket_id: b },
+      ]);
+      expect((await tx.query(`SELECT content, metadata FROM ticket_activity_log WHERE ticket_id = $1 AND activity_type = 'note'`, [b])).rows).toEqual([
+        { content: 'Duplicate details', metadata: { mergedFrom: c } },
+      ]);
+      expect((await tx.query(`SELECT ticket_id FROM ticket_activity_log WHERE ticket_id IN ($1, $2, $3) AND activity_type = 'merged'`, [a, b, c])).rows).toHaveLength(4);
+    });
+
+    it('redirects a merged-away source and merges its survivor with carried notes', async () => {
+      const { a, b, c, merge } = await fixture();
+      ok(await run('tickets.add_note', owner({ idempotencyKey: randomUUID() }), { ticketId: a, note: 'Original details' }));
+      ok(await merge(a, b));
+      expect(ok(await merge(a, c))).toEqual({ sourceId: b, targetId: c, requestedSourceId: a, merged: true });
+      expect((await tx.query(`SELECT status, parent_ticket_id FROM tickets WHERE id = $1`, [b])).rows).toEqual([
+        { status: 'closed', parent_ticket_id: c },
+      ]);
+      expect((await tx.query(`SELECT content, metadata FROM ticket_activity_log WHERE ticket_id = $1 AND activity_type = 'note'`, [c])).rows).toEqual([
+        { content: 'Original details', metadata: { mergedFrom: b } },
+      ]);
+      expect((await tx.query(`SELECT ticket_id FROM ticket_activity_log WHERE ticket_id IN ($1, $2, $3) AND activity_type = 'merged'`, [a, b, c])).rows).toHaveLength(4);
+    });
+
+    it('treats either direction of a multi-hop chain as a no-op without writes', async () => {
+      const { a, b, c, merge } = await fixture();
+      ok(await merge(a, b));
+      ok(await merge(b, c));
+      const before = await writes();
+      expect(ok(await merge(a, c))).toEqual({ sourceId: a, targetId: c, merged: true });
+      expect(await writes()).toEqual(before);
+      expect(ok(await merge(c, a))).toEqual({ sourceId: c, targetId: c, requestedTargetId: a, merged: true });
+      expect(await writes()).toEqual(before);
+      expect(ok(await merge(a, b))).toEqual({ sourceId: a, targetId: c, requestedTargetId: b, merged: true });
+      expect(await writes()).toEqual(before);
+    });
+
+    it('rejects a closed target survivor without writes', async () => {
+      const { a, b, c, merge } = await fixture();
+      ok(await merge(a, b));
+      await tx.query(`UPDATE tickets SET status = 'closed' WHERE id = $1`, [b]);
+      const before = await writes();
+      expect(await merge(c, a)).toMatchObject({
+        ok: false, error: { code: 'VALIDATION_FAILED', field: 'targetId', callerSafeMessage: 'That ticket is closed.' },
+      });
+      expect(await writes()).toEqual(before);
+    });
+
+    it.each(['sourceId', 'targetId'] as const)('rejects a parent cycle on %s without writes', async (field) => {
+      const { a, b, c, merge } = await fixture();
+      await tx.query(`UPDATE tickets SET parent_ticket_id = $1 WHERE id = $2`, [b, a]);
+      await tx.query(`UPDATE tickets SET parent_ticket_id = $1 WHERE id = $2`, [a, b]);
+      const before = await writes();
+      const result = await merge(field === 'sourceId' ? a : c, field === 'targetId' ? a : c);
+      expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', field, message: expect.stringMatching(/cycle/i), callerSafeMessage: expect.any(String) } });
+      expect(await writes()).toEqual(before);
+    });
+
+    it.each(['sourceId', 'targetId'] as const)('returns NOT_FOUND for a missing or foreign parent on %s without writes', async (field) => {
+      for (const foreign of [false, true]) {
+        const { a, b, c, merge } = await fixture();
+        await tx.query(`UPDATE tickets SET parent_ticket_id = $1 WHERE id = $2`, [foreign ? b : 'missing-parent', a]);
+        if (foreign) await tx.query(`UPDATE tickets SET tenant_id = $1 WHERE id = $2`, [OTHER, b]);
+        const before = await writes();
+        expect(await merge(field === 'sourceId' ? a : c, field === 'targetId' ? a : c)).toMatchObject({
+          ok: false, error: { code: 'NOT_FOUND', field },
+        });
+        expect(await writes()).toEqual(before);
+      }
+    });
   });
 });

@@ -212,5 +212,7 @@ export const mergeOutput = z.object({
   sourceId: z.string(),
   targetId: z.string(),
   merged: z.literal(true),
+  requestedSourceId: z.string().optional(),
+  requestedTargetId: z.string().optional(),
 });
 export type MergeOutput = z.infer<typeof mergeOutput>;
