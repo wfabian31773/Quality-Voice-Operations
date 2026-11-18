@@ -190,6 +190,14 @@ export function createMemoryTicketsRepo(): { state: MemoryTicketsState; repo: Ti
         const found = own().find((ticket) => ticket.id === id);
         return found ? strip(found) : null;
       },
+      async hasMergeAliasAtDepth(survivorId, depth) {
+        let parents = [survivorId];
+        for (let hops = 0; hops < depth; hops++) {
+          parents = own().filter((ticket) => parents.includes(ticket.parentTicketId ?? '')).map((ticket) => ticket.id);
+          if (parents.length === 0) return false;
+        }
+        return true;
+      },
       async update(id, patch, now) {
         const found = own().find((ticket) => ticket.id === id);
         if (!found) throw new Error(`ticket ${id} missing`);
