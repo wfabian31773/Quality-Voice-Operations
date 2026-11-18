@@ -198,8 +198,9 @@ async function mergeSurvivor(
   repo: TicketsRepo,
   id: string,
   field: 'sourceId' | 'targetId',
-): Promise<TicketRecord | ActionResult<never>> {
+): Promise<{ ticket: TicketRecord; previousId?: string } | ActionResult<never>> {
   const visited = new Set<string>();
+  let previousId: string | undefined;
   for (let hops = 0; hops <= MERGE_PARENT_HOPS; hops++) {
     if (visited.has(id)) {
       return actionFail('VALIDATION_FAILED', 'Ticket parent chain contains a cycle', {
@@ -210,7 +211,8 @@ async function mergeSurvivor(
     visited.add(id);
     const ticket = await repo.get(id);
     if (!ticket) return actionFail('NOT_FOUND', 'Ticket not found', { field });
-    if (!ticket.parentTicketId) return ticket;
+    if (!ticket.parentTicketId) return { ticket, previousId };
+    previousId = ticket.id;
     id = ticket.parentTicketId;
   }
   return actionFail('VALIDATION_FAILED', 'Ticket parent chain is too long', {
@@ -566,18 +568,20 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
         if (isActionFailure(resolvedSource)) return resolvedSource;
         const resolvedTarget = await mergeSurvivor(repo, input.targetId, 'targetId');
         if (isActionFailure(resolvedTarget)) return resolvedTarget;
-        // Already under the same survivor: nothing to merge. Keep the caller's
-        // source id so re-running the same pair returns the same result as before.
-        if (resolvedSource.id === resolvedTarget.id) return actionOk(output(input.sourceId, resolvedTarget.id));
+        // The last source hop is the survivor that was merged into this target.
+        // Retain it on repeats, including when the requested source was an alias.
+        if (resolvedSource.ticket.id === resolvedTarget.ticket.id) {
+          return actionOk(output(resolvedSource.previousId ?? resolvedSource.ticket.id, resolvedTarget.ticket.id));
+        }
 
         // Roll back stale attempts to release their locks before locking a new
         // sorted pair; retaining old locks could invert the order across retries.
         await tx.query('SAVEPOINT tickets_merge_locks');
-        const [firstId, secondId] = [resolvedSource.id, resolvedTarget.id].sort();
+        const [firstId, secondId] = [resolvedSource.ticket.id, resolvedTarget.ticket.id].sort();
         const first = await repo.get(firstId, { forUpdate: true });
         const second = await repo.get(secondId, { forUpdate: true });
-        const lockedSource = resolvedSource.id === firstId ? first : second;
-        const lockedTarget = resolvedTarget.id === firstId ? first : second;
+        const lockedSource = resolvedSource.ticket.id === firstId ? first : second;
+        const lockedTarget = resolvedTarget.ticket.id === firstId ? first : second;
         if (!lockedSource || !lockedTarget) {
           await tx.query('ROLLBACK TO SAVEPOINT tickets_merge_locks');
           await tx.query('RELEASE SAVEPOINT tickets_merge_locks');
@@ -603,6 +607,15 @@ export function createTicketsActions(deps: TicketsActionDeps = {}): AnyActionDef
         return actionFail('VALIDATION_FAILED', 'Cannot merge into a closed ticket', {
           field: 'targetId',
           callerSafeMessage: 'That ticket is closed.',
+        });
+      }
+      // Both roots are locked. Every merge attaching aliases to this tree must
+      // lock its survivor too, so its depth cannot grow during this read. Avoid
+      // locking descendants: that could invert the sorted survivor lock order.
+      if (await repo.hasMergeAliasAtDepth(source.id, MERGE_PARENT_HOPS)) {
+        return actionFail('VALIDATION_FAILED', 'Merge would make an existing ticket parent chain too long', {
+          field: 'sourceId',
+          callerSafeMessage: "That merge would exceed the limit for an existing ticket's merge history.",
         });
       }
 

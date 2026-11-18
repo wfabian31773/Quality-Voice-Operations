@@ -1018,7 +1018,7 @@ describe('tickets.merge', () => {
     const before = writes(tickets);
 
     expect(data(await merge({ sourceId: a, targetId: c }))).toEqual({
-      sourceId: a, targetId: c, merged: true,
+      sourceId: b, targetId: c, requestedSourceId: a, merged: true,
     });
     expect(writes(tickets)).toEqual(before);
     expect(data(await merge({ sourceId: c, targetId: a }))).toEqual({
@@ -1026,8 +1026,28 @@ describe('tickets.merge', () => {
     });
     expect(writes(tickets)).toEqual(before);
     expect(data(await merge({ sourceId: a, targetId: b }))).toEqual({
-      sourceId: a, targetId: c, requestedTargetId: b, merged: true,
+      sourceId: b, targetId: c, requestedSourceId: a, requestedTargetId: b, merged: true,
     });
+    expect(writes(tickets)).toEqual(before);
+  });
+
+  it.each([false, true])('repeating a redirected source merge preserves its result with a redirected target: %s', async (redirectTarget) => {
+    const env = await twoTickets();
+    const { sourceId: a, targetId: b, tickets, merge } = env;
+    const c = await thirdTicket(env);
+    data(await merge({ sourceId: a, targetId: b }));
+    const targetId = redirectTarget ? randomUUID() : c;
+    if (redirectTarget) {
+      const target = tickets.state.tickets.find((ticket) => ticket.id === c)!;
+      tickets.state.tickets.push({ ...target, id: targetId, status: 'closed', parentTicketId: c });
+    }
+    const result = data(await merge({ sourceId: a, targetId }));
+    expect(result).toEqual({
+      sourceId: b, targetId: c, requestedSourceId: a,
+      ...(redirectTarget ? { requestedTargetId: targetId } : {}), merged: true,
+    });
+    const before = writes(tickets);
+    expect(data(await merge({ sourceId: a, targetId }))).toEqual(result);
     expect(writes(tickets)).toEqual(before);
   });
 
@@ -1088,9 +1108,56 @@ describe('tickets.merge', () => {
     expect(!tooLong.ok && tooLong.error.callerSafeMessage).toBeTruthy();
     expect(!tooLong.ok && tooLong.error.message).toMatch(/chain.*long/i);
     expect(writes(tickets)).toEqual(before);
-    expect(data(await merge({ sourceId: 'chain-1', targetId }))).toEqual({
-      sourceId: 'chain-21', targetId, requestedSourceId: 'chain-1', merged: true,
+    expect(data(await merge({ sourceId: 'chain-1', targetId: 'chain-21' }))).toEqual({
+      sourceId: 'chain-20', targetId: 'chain-21', requestedSourceId: 'chain-1', merged: true,
     });
+    expect(writes(tickets)).toEqual(before);
+  });
+
+  it('allows creating a 20-hop alias but rejects extending it without writes', async () => {
+    const env = await twoTickets();
+    const { sourceId, targetId, tickets, merge } = env;
+    const c = await thirdTicket(env);
+    const source = tickets.state.tickets.find((ticket) => ticket.id === sourceId)!;
+    let parentId = sourceId;
+    for (let i = 1; i <= 19; i++) {
+      const id = `alias-${i}`;
+      tickets.state.tickets.push({ ...source, id, status: 'closed', parentTicketId: parentId });
+      parentId = id;
+    }
+    data(await merge({ sourceId, targetId }));
+    const result = data(await merge({ sourceId: parentId, targetId }));
+    expect(result).toEqual({ sourceId, targetId, requestedSourceId: parentId, merged: true });
+    const before = writes(tickets);
+    const beforeLocks = tickets.state.rowLocks.length;
+    const rejected = await merge({ sourceId: targetId, targetId: c });
+    expectFail(rejected, 'VALIDATION_FAILED', 'sourceId');
+    expect(!rejected.ok && rejected.error.message).toMatch(/existing.*chain.*long/i);
+    expect(!rejected.ok && rejected.error.callerSafeMessage).toMatch(/exceed the limit/i);
+    expect(tickets.state.rowLocks.slice(beforeLocks)).toEqual([targetId, c].sort().map((id) => `${TENANT}\0${id}`));
+    expect(writes(tickets)).toEqual(before);
+    expect(data(await merge({ sourceId: parentId, targetId }))).toEqual(result);
+    expect(writes(tickets)).toEqual(before);
+  });
+
+  it('checks alias depth after locking survivors so a concurrent attachment cannot exceed the limit', async () => {
+    let beforeLock = (_id: string) => {};
+    const env = await twoTickets(onRowLock((id) => beforeLock(id)));
+    const { sourceId, targetId, tickets, merge } = env;
+    let afterConcurrent: ReturnType<typeof writes>;
+    beforeLock = () => {
+      beforeLock = () => {};
+      const source = tickets.state.tickets.find((ticket) => ticket.id === sourceId)!;
+      let parentId = sourceId;
+      for (let i = 1; i <= 20; i++) {
+        const id = `concurrent-alias-${i}`;
+        tickets.state.tickets.push({ ...source, id, status: 'closed', parentTicketId: parentId });
+        parentId = id;
+      }
+      afterConcurrent = writes(tickets);
+    };
+    expectFail(await merge({ sourceId, targetId }), 'VALIDATION_FAILED', 'sourceId');
+    expect(writes(tickets)).toEqual(afterConcurrent!);
   });
 
   it.each(['sourceId', 'targetId'] as const)('retries when %s gains a parent before the survivor locks', async (field) => {

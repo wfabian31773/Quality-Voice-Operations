@@ -156,6 +156,8 @@ export interface TicketsRepo {
   /** Writes a pending outbox row in the caller's transaction and returns its id. */
   enqueueOutbox(event: NewOutboxEvent): Promise<string>;
   get(id: string, opts?: { forUpdate?: boolean }): Promise<TicketRecord | null>;
+  /** Read-only reverse walk. Caller must hold the survivor lock to keep its tree stable. */
+  hasMergeAliasAtDepth(survivorId: string, depth: number): Promise<boolean>;
   update(id: string, patch: TicketPatch, now: Date): Promise<TicketRecord>;
   list(filter: ListFilter): Promise<TicketRecord[]>;
   notes(ticketId: string, limit: number): Promise<TicketNote[]>;
@@ -505,6 +507,19 @@ export const sqlTicketsRepo: TicketsRepoFactory = (tx, tenantId) => ({
       [tenantId, id],
     );
     return rows[0] ? mapTicket(rows[0]) : null;
+  },
+
+  async hasMergeAliasAtDepth(survivorId, depth) {
+    let parents = [survivorId];
+    for (let hops = 0; hops < depth; hops++) {
+      const { rows } = await tx.query(
+        `SELECT id FROM tickets WHERE tenant_id = $1 AND parent_ticket_id = ANY($2)`,
+        [tenantId, parents],
+      );
+      if (rows.length === 0) return false;
+      parents = rows.map((row) => String(row.id));
+    }
+    return true;
   },
 
   async update(id, patch, now) {
